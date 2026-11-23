@@ -254,6 +254,7 @@ type emailFull struct {
 	ReceivedAt   string          `json:"receivedAt"`
 	MessageID    []string        `json:"messageId"`
 	References   []string        `json:"references"`
+	InReplyTo    []string        `json:"inReplyTo"`
 	Keywords     map[string]bool `json:"keywords"`
 	MailboxIDs   map[string]bool `json:"mailboxIds"`
 	TextBody     []part          `json:"textBody"`
@@ -264,7 +265,7 @@ type emailFull struct {
 	Attachments []part `json:"attachments"`
 }
 
-var fullProps = []string{"id", "threadId", "from", "to", "cc", "subject", "receivedAt", "messageId", "references",
+var fullProps = []string{"id", "threadId", "from", "to", "cc", "subject", "receivedAt", "messageId", "inReplyTo", "references",
 	"keywords", "mailboxIds", "textBody", "bodyValues", "attachments"}
 
 func (t *Tools) getEmails(ctx context.Context, tok string, s *jmap.Session, acct string, ids []string, maxBytes int) ([]emailFull, error) {
@@ -536,7 +537,7 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, DraftOut{}, fmt.Errorf("%q is not a draft in Drafts: only drafts can be changed", in.ID)
 	}
 	o := es[0]
-	d := draft{to: o.To, cc: o.Cc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: nil, references: o.References}
+	d := draft{to: o.To, cc: o.Cc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: o.InReplyTo, references: o.References}
 	if in.To != nil {
 		d.to = toAddrs(in.To)
 	}
@@ -591,19 +592,7 @@ func (t *Tools) saveDraft(ctx context.Context, tok string, s *jmap.Session, acct
 	if err != nil {
 		return "", err
 	}
-	e := map[string]any{
-		"mailboxIds": map[string]bool{drafts.ID: true},
-		"keywords":   map[string]bool{"$draft": true, "$seen": true},
-		"from":       []address{from}, "to": d.to, "cc": d.cc, "subject": d.subject,
-		"bodyValues": map[string]any{"b": map[string]string{"value": d.body}},
-		"textBody":   []map[string]string{{"partId": "b", "type": "text/plain"}},
-	}
-	if len(d.inReplyTo) > 0 {
-		e["inReplyTo"] = d.inReplyTo
-	}
-	if len(d.references) > 0 {
-		e["references"] = d.references
-	}
+	e := draftEmail(d, drafts.ID, from)
 	// Create first; remove the old draft only once the new one exists
 	// (a failed update must never lose the draft).
 	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, jmap.Call{Method: "Email/set", Args: map[string]any{"accountId": acct, "create": map[string]any{"d": e}}})
@@ -632,6 +621,30 @@ func (t *Tools) saveDraft(ctx context.Context, tok string, s *jmap.Session, acct
 		}
 	}
 	return id, nil
+}
+
+// draftEmail: the Email/set create object for a draft. Empty fields are
+// left out: Stalwart refuses null for to/cc ("invalidProperties"), and a
+// draft read back from the server has cc null when it had none.
+func draftEmail(d draft, draftsID string, from address) map[string]any {
+	e := map[string]any{
+		"mailboxIds": map[string]bool{draftsID: true},
+		"keywords":   map[string]bool{"$draft": true, "$seen": true},
+		"from":       []address{from}, "subject": d.subject,
+		"bodyValues": map[string]any{"b": map[string]string{"value": d.body}},
+		"textBody":   []map[string]string{{"partId": "b", "type": "text/plain"}},
+	}
+	for k, v := range map[string][]address{"to": d.to, "cc": d.cc} {
+		if len(v) > 0 {
+			e[k] = v
+		}
+	}
+	for k, v := range map[string][]string{"inReplyTo": d.inReplyTo, "references": d.references} {
+		if len(v) > 0 {
+			e[k] = v
+		}
+	}
+	return e
 }
 
 // fromAddress: the person's identity (first sending identity, else their login email).
