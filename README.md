@@ -5,7 +5,7 @@ The MCP gateway of an [SGNL](https://github.com/igorski89/sgnl) instance: one
 instance's apps, so a person can work with their mail, calendar and files
 from Claude, Codex or their own client, logged in with their SGNL account.
 
-Status: proof of concept, read-only.
+Status: proof of concept (M2): reads plus private, reversible writes. Nothing is ever sent, shared or deleted.
 
 ## Tools
 
