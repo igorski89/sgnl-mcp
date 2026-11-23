@@ -515,7 +515,7 @@ type DraftUpdateIn struct {
 	ID      string   `json:"id" jsonschema:"draft id"`
 	To      []string `json:"to,omitempty" jsonschema:"replaces the recipients if given"`
 	Cc      []string `json:"cc,omitempty"`
-	Subject string   `json:"subject,omitempty"`
+	Subject string   `json:"subject,omitempty" jsonschema:"changing a reply's subject moves it out of its conversation"`
 	Body    string   `json:"body,omitempty" jsonschema:"replaces the whole text if given"`
 }
 
