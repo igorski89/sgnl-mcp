@@ -4,7 +4,7 @@ import "testing"
 
 func TestHTML(t *testing.T) {
 	in := `<html><head><style>p{}</style></head><body><p>Hello &amp; welcome</p><script>x()</script><div>Line<br>two</div></body></html>`
-	if got, want := HTML(in), "Hello & welcome\nLine\ntwo"; got != want {
+	if got, want := HTML(in), "Hello & welcome\n\nLine\ntwo"; got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
 }

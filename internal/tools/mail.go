@@ -148,7 +148,7 @@ func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct str
 	}
 	out := []MailSummary{}
 	for _, e := range got.List {
-		out = append(out, MailSummary{e.ID, addrs(e.From), e.Subject, e.ReceivedAt, !e.Keywords["$seen"], e.Preview})
+		out = append(out, MailSummary{e.ID, addrs(e.From), textx.Visible(e.Subject), e.ReceivedAt, !e.Keywords["$seen"], textx.Visible(e.Preview)})
 	}
 	return out, nil
 }
@@ -258,6 +258,7 @@ type emailFull struct {
 	Keywords     map[string]bool `json:"keywords"`
 	MailboxIDs   map[string]bool `json:"mailboxIds"`
 	TextBody     []part          `json:"textBody"`
+	HTMLBody     []part          `json:"htmlBody"`
 	BodyValues   map[string]struct {
 		Value       string `json:"value"`
 		IsTruncated bool   `json:"isTruncated"`
@@ -266,12 +267,12 @@ type emailFull struct {
 }
 
 var fullProps = []string{"id", "threadId", "from", "to", "cc", "subject", "receivedAt", "messageId", "inReplyTo", "references",
-	"keywords", "mailboxIds", "textBody", "bodyValues", "attachments"}
+	"keywords", "mailboxIds", "textBody", "htmlBody", "bodyValues", "attachments"}
 
 func (t *Tools) getEmails(ctx context.Context, tok string, s *jmap.Session, acct string, ids []string, maxBytes int) ([]emailFull, error) {
 	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing,
 		jmap.Call{Method: "Email/get", Args: map[string]any{"accountId": acct, "ids": ids, "properties": fullProps,
-			"fetchTextBodyValues": true, "maxBodyValueBytes": maxBytes}})
+			"fetchTextBodyValues": true, "fetchHTMLBodyValues": true, "maxBodyValueBytes": maxBytes}})
 	if err != nil {
 		return nil, err
 	}
@@ -280,10 +281,22 @@ func (t *Tools) getEmails(ctx context.Context, tok string, s *jmap.Session, acct
 	return got.List, err
 }
 
+// bodyParts: what the person sees in their mail app. A mail can carry a
+// plain-text version that differs from the HTML one (a known way to show
+// a model text the person never sees), so the HTML version wins.
+func bodyParts(e emailFull) []part {
+	for _, p := range e.HTMLBody {
+		if strings.HasPrefix(p.Type, "text/html") {
+			return e.HTMLBody
+		}
+	}
+	return e.TextBody
+}
+
 func toMessage(e emailFull, limit int) MailMessage {
 	m := MailMessage{ID: e.ID, From: addrs(e.From), To: addrs(e.To), Cc: addrs(e.Cc), Subject: e.Subject, Received: e.ReceivedAt, Attachments: []Attachment{}}
 	var b strings.Builder
-	for _, p := range e.TextBody {
+	for _, p := range bodyParts(e) {
 		v, ok := e.BodyValues[p.PartID]
 		if !ok {
 			continue
@@ -291,6 +304,8 @@ func toMessage(e emailFull, limit int) MailMessage {
 		text := v.Value
 		if strings.HasPrefix(p.Type, "text/html") {
 			text = textx.HTML(text)
+		} else {
+			text = textx.Visible(text)
 		}
 		b.WriteString(text)
 		b.WriteString("\n")
