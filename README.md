@@ -15,8 +15,8 @@ Status: proof of concept, read-only.
 | `mail_search` | mail (JMAP) | messages matching words / sender / date: id, sender, subject, date, preview |
 | `mail_read` | mail (JMAP) | one message as plain text, attachments listed |
 | `calendar_list` | calendar (JMAP) | events in a date range |
-
-Files (OpenCloud) follow.
+| `files_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
+| `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, JSON, YAML, .docx) |
 
 ## How it works
 
@@ -28,7 +28,11 @@ Files (OpenCloud) follow.
   a short-lived one of its own (RFC 8693 token exchange) and calls the app
   with that. The apps see the person, with their own permissions; the
   gateway holds no master credentials.
-- **Read-only:** the JMAP client can only send get/query methods.
+- **Read-only:** the JMAP client can only send get/query methods; the
+  OpenCloud client only GET, PROPFIND and REPORT.
+- **Identity check:** apps that update the account (and its role) from the
+  token they get (OpenCloud) are only called when the gateway's token
+  carries exactly the person's username, name, email and groups.
 - **Untrusted content:** mail and file content is written by others. The
   tools and server instructions say so; nothing in this version can send,
   share or delete.
@@ -44,7 +48,7 @@ go run ./cmd/sgnl-mcp
 ```
 
 with `SGNL_MCP_LABEL`, `SGNL_MCP_ISSUER`, `SGNL_MCP_CLIENT_SECRET`,
-`SGNL_MCP_JMAP_URL` (and optionally `SGNL_MCP_PUBLIC_URL`, `SGNL_MCP_ADDR`,
+`SGNL_MCP_JMAP_URL` (and optionally `SGNL_MCP_OPENCLOUD_URL`, `SGNL_MCP_PUBLIC_URL`, `SGNL_MCP_ADDR`,
 `SGNL_MCP_CLIENT_ID`) set; see `cmd/sgnl-mcp/main.go`. The login server
 needs a confidential client for the gateway with token exchange allowed,
 and a client for each MCP client (e.g. Claude Code: public, PKCE, an

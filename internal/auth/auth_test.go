@@ -24,3 +24,27 @@ func TestPeekClaims(t *testing.T) {
 		t.Errorf("garbage: %+v", c)
 	}
 }
+
+func TestIdentityDiff(t *testing.T) {
+	a := Claims{Username: "u", Email: "e", Name: "n", Groups: []string{"x", "y"}}
+	b := a
+	b.Groups = []string{"y", "x"}
+	if d := identityDiff(a, b); d != "" {
+		t.Errorf("same identity, group order differs: %q", d)
+	}
+	for field, mod := range map[string]func(*Claims){
+		"groups": func(c *Claims) { c.Groups = []string{"x"} },
+		"email":  func(c *Claims) { c.Email = "" },
+		"name":   func(c *Claims) { c.Name = "m" },
+	} {
+		c := a
+		c.Groups = append([]string(nil), a.Groups...)
+		mod(&c)
+		if d := identityDiff(a, c); d != field {
+			t.Errorf("%s: got %q", field, d)
+		}
+	}
+	if identityDiff(Claims{}, Claims{}) != "username" {
+		t.Error("empty username must differ")
+	}
+}

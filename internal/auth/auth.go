@@ -165,9 +165,45 @@ var ErrLoginExpired = errors.New("your SGNL login has expired or was ended: log 
 // AppToken trades the caller's token for a short-lived one issued to the
 // gateway (never cached: one per call).
 func (g *Gateway) AppToken(ctx context.Context) (string, error) {
-	p, err := from(ctx)
+	tok, _, err := g.appToken(ctx)
+	return tok, err
+}
+
+// SameIdentityToken: an app token whose identity claims (username, name,
+// email, groups) equal the person's. For apps that update the account
+// (and its role) from the token they get, e.g. OpenCloud's autoprovisioning
+// and role assignment: a token that differs is refused, never sent.
+func (g *Gateway) SameIdentityToken(ctx context.Context) (string, error) {
+	tok, c, err := g.appToken(ctx)
 	if err != nil {
 		return "", err
+	}
+	p, _ := from(ctx)
+	if d := identityDiff(p.claims, c); d != "" {
+		slog.Warn("app token refused: identity differs from the person's", "field", d, "person", p.claims, "app", c)
+		return "", fmt.Errorf("the app token's %s differs from your login's; refusing to call the app", d)
+	}
+	return tok, nil
+}
+
+func identityDiff(a, b Claims) string {
+	switch {
+	case a.Username == "" || a.Username != b.Username:
+		return "username"
+	case a.Email != b.Email:
+		return "email"
+	case a.Name != b.Name:
+		return "name"
+	case !slices.Equal(slices.Sorted(slices.Values(a.Groups)), slices.Sorted(slices.Values(b.Groups))):
+		return "groups"
+	}
+	return ""
+}
+
+func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
+	p, err := from(ctx)
+	if err != nil {
+		return "", Claims{}, err
 	}
 	f := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
@@ -176,12 +212,15 @@ func (g *Gateway) AppToken(ctx context.Context) (string, error) {
 		"subject_token":        {p.token},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
 		"requested_token_type": {"urn:ietf:params:oauth:token-type:access_token"},
+		// openid: apps that look the person up at the issuer's userinfo
+		// (OpenCloud) need it; without it userinfo answers 403.
+		"scope": {"openid"},
 	}
 	req, _ := http.NewRequestWithContext(ctx, "POST", g.tokenURL, strings.NewReader(f.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := g.http.Do(req)
 	if err != nil {
-		return "", err
+		return "", Claims{}, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -194,14 +233,14 @@ func (g *Gateway) AppToken(ctx context.Context) (string, error) {
 	if resp.StatusCode != 200 || r.AccessToken == "" {
 		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "subject", p.claims)
 		if r.Desc == "Invalid token" || r.Error == "invalid_token" {
-			return "", ErrLoginExpired
+			return "", Claims{}, ErrLoginExpired
 		}
-		return "", fmt.Errorf("token exchange: %d %s %s", resp.StatusCode, r.Error, r.Desc)
+		return "", Claims{}, fmt.Errorf("token exchange: %d %s %s", resp.StatusCode, r.Error, r.Desc)
 	}
 	c := PeekClaims(r.AccessToken)
 	if c.Azp != g.cfg.ClientID {
-		return "", fmt.Errorf("exchanged token issued to %q, not %s", c.Azp, g.cfg.ClientID)
+		return "", Claims{}, fmt.Errorf("exchanged token issued to %q, not %s", c.Azp, g.cfg.ClientID)
 	}
 	slog.Debug("token exchanged", "subject", p.claims, "exchanged", c)
-	return r.AccessToken, nil
+	return r.AccessToken, c, nil
 }
