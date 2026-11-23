@@ -36,3 +36,10 @@ func TestExtractDropsInvisibleCharacters(t *testing.T) {
 		t.Errorf("got %q %v", got, err)
 	}
 }
+
+func TestHTMLKeepsLinkAddresses(t *testing.T) {
+	got := HTML(`<p><a href="https://example.com/x">Read more</a>, <a href="https://example.com/y">https://example.com/y</a> <a href="javascript:x()">no</a></p>`)
+	if want := "Read more (https://example.com/x), https://example.com/y no"; got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}

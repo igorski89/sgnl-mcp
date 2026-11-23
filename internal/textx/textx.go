@@ -48,6 +48,19 @@ func hiddenElement(n *nethtml.Node) bool {
 	return false
 }
 
+func linkTarget(n *nethtml.Node) string {
+	for _, a := range n.Attr {
+		if strings.EqualFold(a.Key, "href") {
+			h := strings.TrimSpace(a.Val)
+			l := strings.ToLower(h)
+			if strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "mailto:") {
+				return h
+			}
+		}
+	}
+	return ""
+}
+
 // HTML: the text a person would see, as plain text. Hidden elements,
 // comments and invisible characters are dropped.
 func HTML(s string) string {
@@ -72,8 +85,15 @@ func HTML(s string) string {
 				b.WriteString("\n")
 			}
 		}
+		start := b.Len()
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			walk(c)
+		}
+		// A link's address, as a person sees it on hover: "text (address)".
+		if n.Type == nethtml.ElementNode && n.Data == "a" {
+			if h := linkTarget(n); h != "" && !strings.Contains(b.String()[start:], h) {
+				b.WriteString(" (" + h + ")")
+			}
 		}
 		if n.Type == nethtml.ElementNode && blockTags[n.Data] && n.Data != "br" {
 			b.WriteString("\n")
