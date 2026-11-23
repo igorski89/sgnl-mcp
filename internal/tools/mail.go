@@ -745,7 +745,34 @@ func (t *Tools) mailMove(ctx context.Context, _ *mcp.CallToolRequest, in MailMov
 	if mb.Role == "trash" || mb.Role == "junk" || mb.Role == "drafts" || mb.Role == "sent" {
 		return nil, MailChangeOut{}, fmt.Errorf("moving to %s isn't offered (deleting comes later, with a confirmation)", mb.Name)
 	}
+	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, jmap.Call{Method: "Email/get",
+		Args: map[string]any{"accountId": acct, "ids": in.IDs, "properties": []string{"id", "keywords", "mailboxIds"}}})
+	if err != nil {
+		return nil, MailChangeOut{}, err
+	}
+	var got struct{ List []emailFull }
+	if err := json.Unmarshal(r[0], &got); err != nil {
+		return nil, MailChangeOut{}, err
+	}
+	var draftsID string
+	if d := byRole(mbs, "drafts"); d != nil {
+		draftsID = d.ID
+	}
+	if err := movable(got.List, draftsID); err != nil {
+		return nil, MailChangeOut{}, err
+	}
 	return t.updateEmails(ctx, in.IDs, func(string) map[string]any { return map[string]any{"mailboxIds": map[string]bool{mb.ID: true}} })
+}
+
+// movable: drafts stay in Drafts. Moved out, an unsent draft would sit
+// among received mail, and no tool can move it back.
+func movable(es []emailFull, draftsID string) error {
+	for _, e := range es {
+		if e.Keywords["$draft"] || (draftsID != "" && e.MailboxIDs[draftsID]) {
+			return fmt.Errorf("%s is a draft: drafts stay in Drafts", e.ID)
+		}
+	}
+	return nil
 }
 
 func (t *Tools) updateEmails(ctx context.Context, ids []string, patch func(string) map[string]any) (*mcp.CallToolResult, MailChangeOut, error) {

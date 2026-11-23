@@ -72,3 +72,18 @@ func TestDraftUpdateNeverLosesContent(t *testing.T) {
 		t.Errorf("truncated draft with a full new body refused: %v", err)
 	}
 }
+
+func TestDraftsAreNotMoved(t *testing.T) {
+	mail := emailFull{ID: "m", MailboxIDs: map[string]bool{"in": true}}
+	if err := movable([]emailFull{mail}, "dr"); err != nil {
+		t.Errorf("received mail refused: %v", err)
+	}
+	for _, d := range []emailFull{
+		{ID: "k", Keywords: map[string]bool{"$draft": true}, MailboxIDs: map[string]bool{"in": true}},
+		{ID: "f", MailboxIDs: map[string]bool{"dr": true}},
+	} {
+		if movable([]emailFull{mail, d}, "dr") == nil {
+			t.Errorf("draft %s allowed to move", d.ID)
+		}
+	}
+}
