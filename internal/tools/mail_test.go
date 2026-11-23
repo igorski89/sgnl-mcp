@@ -42,3 +42,33 @@ func TestDraftEmailLeavesOutEmptyFields(t *testing.T) {
 		t.Errorf("null in draft JSON: %s", b)
 	}
 }
+
+// An update re-creates the draft from its text: refuse when that would lose
+// attachments or the end of a long draft.
+func TestDraftUpdateNeverLosesContent(t *testing.T) {
+	body := func(v string, trunc bool) emailFull {
+		e := emailFull{TextBody: []part{{PartID: "1", Type: "text/plain"}}}
+		e.BodyValues = map[string]struct {
+			Value       string `json:"value"`
+			IsTruncated bool   `json:"isTruncated"`
+		}{"1": {v, trunc}}
+		return e
+	}
+	if err := replaceable(body("short", false), false); err != nil {
+		t.Errorf("plain draft refused: %v", err)
+	}
+	withAtt := body("short", false)
+	withAtt.Attachments = []part{{Name: "a.pdf"}}
+	for _, nb := range []bool{false, true} {
+		if replaceable(withAtt, nb) == nil {
+			t.Errorf("draft with attachments allowed (new body %v)", nb)
+		}
+	}
+	long := body("cut", true)
+	if replaceable(long, false) == nil {
+		t.Error("truncated draft allowed without a new body")
+	}
+	if err := replaceable(long, true); err != nil {
+		t.Errorf("truncated draft with a full new body refused: %v", err)
+	}
+}

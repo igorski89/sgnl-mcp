@@ -537,6 +537,9 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, DraftOut{}, fmt.Errorf("%q is not a draft in Drafts: only drafts can be changed", in.ID)
 	}
 	o := es[0]
+	if err := replaceable(o, in.Body != ""); err != nil {
+		return nil, DraftOut{}, err
+	}
 	d := draft{to: o.To, cc: o.Cc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: o.InReplyTo, references: o.References}
 	if in.To != nil {
 		d.to = toAddrs(in.To)
@@ -556,6 +559,20 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, DraftOut{}, err
 	}
 	return nil, DraftOut{id, addrs(d.to), d.subject, draftNote}, nil
+}
+
+// replaceable: whether a draft can be re-created without losing anything.
+// The new copy carries only recipients, subject and plain text, so a draft
+// with attachments, or one too long to read back whole (unless the text is
+// being replaced), is refused rather than replaced with less.
+func replaceable(o emailFull, newBody bool) error {
+	if len(o.Attachments) > 0 {
+		return fmt.Errorf("this draft has attachments, which an update would drop: change it in the mail app instead")
+	}
+	if !newBody && toMessage(o, maxBody).Truncated {
+		return fmt.Errorf("this draft is too long to copy whole: give the full new body, or change it in the mail app")
+	}
+	return nil
 }
 
 type draft struct {
