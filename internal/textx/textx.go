@@ -27,23 +27,56 @@ var invisibleTags = map[string]bool{"script": true, "style": true, "head": true,
 var blockTags = map[string]bool{"br": true, "p": true, "div": true, "tr": true, "li": true, "table": true,
 	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true, "blockquote": true, "pre": true, "hr": true}
 
-// reHiddenStyle: inline styles that hide text from a reader. Hidden text
-// is the usual carrier for instructions aimed at an AI.
-var reHiddenStyle = regexp.MustCompile(`(?i)(display\s*:\s*none|visibility\s*:\s*(hidden|collapse)|opacity\s*:\s*0(\.0*)?\s*(;|$|!)|font-size\s*:\s*(0|0?\.\d+|1)(px|pt|em|rem|%)?\s*(;|$|!)|(max-)?(height|width)\s*:\s*0(px)?\s*(;|$|!)|text-indent\s*:\s*-\d{3,})`)
+// Hidden text is the usual carrier for instructions aimed at an AI. Some
+// styles hide a whole element (display:none, opacity 0, a zero-size box
+// that clips); others (font size, visibility) are inherited and a child
+// can undo them, so they are tracked down the tree like a browser does.
 
-func hiddenElement(n *nethtml.Node) bool {
+// styles: an inline style attribute as property -> value, lowercased.
+func styles(n *nethtml.Node) map[string]string {
+	out := map[string]string{}
+	for _, a := range n.Attr {
+		if !strings.EqualFold(a.Key, "style") {
+			continue
+		}
+		for _, d := range strings.Split(a.Val, ";") {
+			k, v, ok := strings.Cut(d, ":")
+			if ok {
+				v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(strings.ToLower(v)), "!important"))
+				out[strings.TrimSpace(strings.ToLower(k))] = strings.TrimSpace(v)
+			}
+		}
+	}
+	return out
+}
+
+var reZeroLen = regexp.MustCompile(`^-?0*(\.0+)?(px|pt|em|rem|%|vh|vw)?$`)
+var reTinyFont = regexp.MustCompile(`^(0*(\.\d+)?|1)(px|pt)?$|^0*(\.0+)?(em|rem|%)$`)
+
+func zeroLen(v string) bool { return v != "" && reZeroLen.MatchString(v) }
+
+// hiddenBox: the element and everything in it is invisible, whatever the
+// children say.
+func hiddenBox(n *nethtml.Node, st map[string]string) bool {
 	if invisibleTags[n.Data] {
 		return true
 	}
 	for _, a := range n.Attr {
-		switch strings.ToLower(a.Key) {
-		case "hidden":
+		if strings.EqualFold(a.Key, "hidden") {
 			return true
-		case "style":
-			if reHiddenStyle.MatchString(a.Val) {
-				return true
-			}
 		}
+	}
+	if st["display"] == "none" || zeroLen(st["opacity"]) {
+		return true
+	}
+	clips := strings.Contains(st["overflow"], "hidden") || strings.Contains(st["overflow"], "clip")
+	for _, k := range []string{"height", "max-height", "width", "max-width"} {
+		if clips && zeroLen(st[k]) {
+			return true
+		}
+	}
+	if ti := st["text-indent"]; strings.HasPrefix(ti, "-") && len(strings.TrimLeft(ti, "-0123456789.")) < len(ti)-4 {
+		return true // pushed far off-screen (-1000px and the like)
 	}
 	return false
 }
@@ -69,17 +102,31 @@ func HTML(s string) string {
 		return ""
 	}
 	var b strings.Builder
-	var walk func(*nethtml.Node)
-	walk = func(n *nethtml.Node) {
+	// tiny: inherited font size too small to read; unseen: inherited
+	// visibility:hidden. Children can undo both.
+	var walk func(n *nethtml.Node, tiny, unseen bool)
+	walk = func(n *nethtml.Node, tiny, unseen bool) {
 		switch n.Type {
 		case nethtml.CommentNode:
 			return
 		case nethtml.TextNode:
-			b.WriteString(n.Data)
+			if !tiny && !unseen {
+				b.WriteString(n.Data)
+			}
 			return
 		case nethtml.ElementNode:
-			if hiddenElement(n) {
+			st := styles(n)
+			if hiddenBox(n, st) {
 				return
+			}
+			if fs, ok := st["font-size"]; ok {
+				tiny = reTinyFont.MatchString(fs)
+			}
+			switch st["visibility"] {
+			case "hidden", "collapse":
+				unseen = true
+			case "visible":
+				unseen = false
 			}
 			if blockTags[n.Data] {
 				b.WriteString("\n")
@@ -87,19 +134,21 @@ func HTML(s string) string {
 		}
 		start := b.Len()
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
+			walk(c, tiny, unseen)
 		}
-		// A link's address, as a person sees it on hover: "text (address)".
-		if n.Type == nethtml.ElementNode && n.Data == "a" {
-			if h := linkTarget(n); h != "" && !strings.Contains(b.String()[start:], h) {
-				b.WriteString(" (" + h + ")")
+		if n.Type == nethtml.ElementNode {
+			// A link's address, as a person sees it on hover: "text (address)".
+			if n.Data == "a" && !tiny && !unseen && b.Len() > start {
+				if h := linkTarget(n); h != "" && !strings.Contains(b.String()[start:], h) {
+					b.WriteString(" (" + h + ")")
+				}
+			}
+			if blockTags[n.Data] && n.Data != "br" {
+				b.WriteString("\n")
 			}
 		}
-		if n.Type == nethtml.ElementNode && blockTags[n.Data] && n.Data != "br" {
-			b.WriteString("\n")
-		}
 	}
-	walk(doc)
+	walk(doc, false, false)
 	return Visible(b.String())
 }
 

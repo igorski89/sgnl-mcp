@@ -43,3 +43,24 @@ func TestHTMLKeepsLinkAddresses(t *testing.T) {
 		t.Errorf("got %q want %q", got, want)
 	}
 }
+
+// Styles a child can undo, and look-alike properties, must not hide
+// visible text (common in newsletter layouts).
+func TestHTMLKeepsTextThatIsVisible(t *testing.T) {
+	in := `<table><tr><td style="font-size:0px">gap<div style="font-size:13px">Shown one</div></td></tr></table>
+<div style="visibility:hidden">secret<p style="visibility:visible">Shown two</p></div>
+<p style="line-height:0">Shown three</p><p style="border-width:0; min-width:0">Shown four</p>
+<div style="height:0">Shown five</div><p style="font-size:12px">Shown six</p>
+<p style="font-size:1.2em">Shown seven</p><p style="font-size:0.9em">Shown eight</p>`
+	got := HTML(in)
+	for _, w := range []string{"Shown one", "Shown two", "Shown three", "Shown four", "Shown five", "Shown six", "Shown seven", "Shown eight"} {
+		if !strings.Contains(got, w) {
+			t.Errorf("visible %q dropped: %q", w, got)
+		}
+	}
+	for _, w := range []string{"gap", "secret"} {
+		if strings.Contains(got, w) {
+			t.Errorf("hidden %q came through: %q", w, got)
+		}
+	}
+}

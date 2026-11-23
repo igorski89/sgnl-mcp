@@ -269,10 +269,13 @@ type emailFull struct {
 var fullProps = []string{"id", "threadId", "from", "to", "cc", "subject", "receivedAt", "messageId", "inReplyTo", "references",
 	"keywords", "mailboxIds", "textBody", "htmlBody", "bodyValues", "attachments"}
 
-func (t *Tools) getEmails(ctx context.Context, tok string, s *jmap.Session, acct string, ids []string, maxBytes int) ([]emailFull, error) {
+// getEmails: maxText is the text the caller wants; HTML is mostly markup,
+// so a multiple of it is fetched raw and the text is cut afterwards.
+func (t *Tools) getEmails(ctx context.Context, tok string, s *jmap.Session, acct string, ids []string, maxText int) ([]emailFull, error) {
+	raw := min(maxText*10, 2<<20)
 	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing,
 		jmap.Call{Method: "Email/get", Args: map[string]any{"accountId": acct, "ids": ids, "properties": fullProps,
-			"fetchTextBodyValues": true, "fetchHTMLBodyValues": true, "maxBodyValueBytes": maxBytes}})
+			"fetchTextBodyValues": true, "fetchHTMLBodyValues": true, "maxBodyValueBytes": raw}})
 	if err != nil {
 		return nil, err
 	}
