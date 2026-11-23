@@ -14,7 +14,7 @@ func confirmSession(t *testing.T, version string, h elicitFn, manual bool) *mcp.
 	t.Helper()
 	ctx := context.Background()
 	s := mcp.NewServer(&mcp.Implementation{Name: "t"}, nil)
-	(&Tools{Experiments: map[string]bool{"confirm": true}}).Register(s)
+	(&Tools{Experiments: map[string]bool{"confirm": true}, Access: Access{All: true}}).Register(s)
 	ct, st := mcp.NewInMemoryTransports()
 	if _, err := s.Connect(ctx, st, nil); err != nil {
 		t.Fatal(err)

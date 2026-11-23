@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -80,7 +81,9 @@ func confirm(ctx context.Context, req *mcp.CallToolRequest, message string) (res
 		return nil, false, fmt.Errorf("the confirmation expired: ask again")
 	}
 	r, _ := req.Params.InputResponses["confirm"].(*mcp.ElicitResult)
-	return nil, r != nil && r.Action == "accept", nil
+	ok = r != nil && r.Action == "accept"
+	slog.Info("person answered", "tool", req.Params.Name, "user", who, "outcome", map[bool]string{true: "accepted", false: "declined"}[ok])
+	return nil, ok, nil
 }
 
 // ---- confirm_test (experiment: SGNL_MCP_EXPERIMENTS=confirm)

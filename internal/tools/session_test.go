@@ -25,7 +25,7 @@ func TestToolsSeeTheCurrentRequestsToken(t *testing.T) {
 	type out struct {
 		Token string `json:"token"`
 	}
-	add(s, &mcp.Tool{Name: "token"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, out, error) {
+	add(&Tools{Access: Access{All: true}}, s, &mcp.Tool{Name: "token"}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, out, error) {
 		return nil, out{auth.Token(ctx)}, nil
 	})
 	h := mcpauth.RequireBearerToken(verify, nil)(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil))
