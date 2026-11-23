@@ -121,7 +121,20 @@ type FileSaveOut struct {
 
 var saveTypes = map[string]string{".md": "text/markdown", ".txt": "text/plain", ".csv": "text/csv", ".json": "application/json", ".yaml": "application/yaml", ".yml": "application/yaml"}
 
-func (t *Tools) fileSave(ctx context.Context, _ *mcp.CallToolRequest, in FileSaveIn) (*mcp.CallToolResult, FileSaveOut, error) {
+// spaceOf: the space a folder path lies in (longest matching prefix).
+func spaceOf(spaces []opencloud.Space, folder string) *opencloud.Space {
+	var best *opencloud.Space
+	for i, sp := range spaces {
+		if strings.HasPrefix(folder, sp.Path) || folder+"/" == sp.Path {
+			if best == nil || len(sp.Path) > len(best.Path) {
+				best = &spaces[i]
+			}
+		}
+	}
+	return best
+}
+
+func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileSaveIn) (*mcp.CallToolResult, FileSaveOut, error) {
 	ct, ok := saveTypes[strings.ToLower(path.Ext(in.Name))]
 	if !ok {
 		return nil, FileSaveOut{}, fmt.Errorf("name: use .md, .txt, .csv, .json or .yaml")
@@ -133,9 +146,32 @@ func (t *Tools) fileSave(ctx context.Context, _ *mcp.CallToolRequest, in FileSav
 	if err != nil {
 		return nil, FileSaveOut{}, err
 	}
+	// The personal space is private: no question. Anywhere else others can
+	// see the file, so the person confirms first.
+	spaces, err := t.Files.Spaces(ctx, tok)
+	if err != nil {
+		return nil, FileSaveOut{}, err
+	}
+	sp := spaceOf(spaces, in.Folder)
+	if sp == nil {
+		return nil, FileSaveOut{}, fmt.Errorf("folder must come from folder_list")
+	}
+	if sp.Type != "personal" {
+		res, ok, err := confirm(ctx, req, fmt.Sprintf("Save a new file %q (%d bytes) into the shared space %q? Everyone with access to that space will see it.", in.Name, len(in.Content), sp.Name))
+		if err != nil || res != nil {
+			return res, FileSaveOut{}, err
+		}
+		if !ok {
+			return nil, FileSaveOut{}, fmt.Errorf("the person declined: nothing was saved")
+		}
+	}
 	p, err := t.Files.SaveNew(ctx, tok, in.Folder, in.Name, ct+"; charset=utf-8", []byte(in.Content))
 	if err != nil {
 		return nil, FileSaveOut{}, err
 	}
-	return nil, FileSaveOut{p, "Saved as a new file. Nothing existing was changed, and it isn't shared."}, nil
+	note := "Saved as a new file in the personal space. Nothing existing was changed, and it isn't shared."
+	if sp.Type != "personal" {
+		note = "Saved as a new file in the shared space " + sp.Name + ", with the person's confirmation. Nothing existing was changed."
+	}
+	return nil, FileSaveOut{p, note}, nil
 }

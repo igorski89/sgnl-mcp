@@ -76,7 +76,7 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(s, &mcp.Tool{Name: "folder_list", Annotations: ro,
 			Description: "List a folder's contents; without a path: your spaces (personal and project spaces) to start from."}, t.folderList)
 		add(s, &mcp.Tool{Name: "file_save", Annotations: wr,
-			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file; not shared with anyone."}, t.fileSave)
+			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file. In the personal space it is private; in a shared (project) space the person is asked to confirm first, because others will see it."}, t.fileSave)
 	}
 	if t.Experiments["confirm"] {
 		add(s, &mcp.Tool{Name: "confirm_test", Annotations: ro,
