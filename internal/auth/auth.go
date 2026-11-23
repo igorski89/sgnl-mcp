@@ -32,6 +32,7 @@ type Claims struct {
 	Name     string   `json:"name"`
 	Email    string   `json:"email"`
 	Groups   []string `json:"groups"`
+	Iat      int64    `json:"iat"`
 	Exp      int64    `json:"exp"`
 }
 
@@ -53,7 +54,7 @@ func (a *Audience) UnmarshalJSON(b []byte) error {
 // LogValue: the claims worth logging.
 func (c Claims) LogValue() slog.Value {
 	return slog.GroupValue(slog.String("user", c.Username), slog.String("azp", c.Azp),
-		slog.Any("aud", []string(c.Aud)), slog.Duration("exp_in", time.Until(time.Unix(c.Exp, 0)).Round(time.Second)))
+		slog.Any("aud", []string(c.Aud)), slog.Time("iat", time.Unix(c.Iat, 0)), slog.Duration("exp_in", time.Until(time.Unix(c.Exp, 0)).Round(time.Second)))
 }
 
 // PeekClaims reads a JWT's payload without checking it: only for tokens
@@ -113,8 +114,19 @@ func (g *Gateway) Verify(ctx context.Context, tok string, _ *http.Request) (*mcp
 		slog.Info("token refused", "reason", "audience", "claims", c)
 		return nil, fmt.Errorf("%w: audience", mcpauth.ErrInvalidToken)
 	}
-	return &mcpauth.TokenInfo{Scopes: strings.Fields(c.Scope), Expiration: t.Expiry, UserID: c.Sub,
-		Extra: map[string]any{"person": person{tok, c}}}, nil
+	return TokenInfo(tok, c, t.Expiry), nil
+}
+
+// TokenInfo: what Verify hands the SDK for a verified token.
+func TokenInfo(tok string, c Claims, exp time.Time) *mcpauth.TokenInfo {
+	return &mcpauth.TokenInfo{Scopes: strings.Fields(c.Scope), Expiration: exp, UserID: c.Sub,
+		Extra: map[string]any{"person": person{tok, c}}}
+}
+
+// Token: the caller's raw token (for tests and the exchange).
+func Token(ctx context.Context) string {
+	p, _ := from(ctx)
+	return p.token
 }
 
 // Person: the verified caller of a tool.
@@ -123,8 +135,19 @@ func Person(ctx context.Context) (Claims, error) {
 	return p.claims, err
 }
 
+// WithRequest puts the token of the current HTTP request (the SDK's
+// req.Extra.TokenInfo) into ctx. Tool handlers must use it: the ctx they
+// get may carry the token the MCP session was opened with, which expires
+// while the session goes on (the person's client refreshes its token).
+func WithRequest(ctx context.Context, ti *mcpauth.TokenInfo) context.Context {
+	if ti == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxKey{}, ti)
+}
+
 func from(ctx context.Context) (person, error) {
-	ti := mcpauth.TokenInfoFromContext(ctx)
+	ti, _ := ctx.Value(ctxKey{}).(*mcpauth.TokenInfo)
 	if ti == nil {
 		return person{}, errors.New("not logged in")
 	}
@@ -169,14 +192,16 @@ func (g *Gateway) AppToken(ctx context.Context) (string, error) {
 	}
 	_ = json.Unmarshal(body, &r)
 	if resp.StatusCode != 200 || r.AccessToken == "" {
-		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "claims", p.claims)
+		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "subject", p.claims)
 		if r.Desc == "Invalid token" || r.Error == "invalid_token" {
 			return "", ErrLoginExpired
 		}
 		return "", fmt.Errorf("token exchange: %d %s %s", resp.StatusCode, r.Error, r.Desc)
 	}
-	if c := PeekClaims(r.AccessToken); c.Azp != g.cfg.ClientID {
+	c := PeekClaims(r.AccessToken)
+	if c.Azp != g.cfg.ClientID {
 		return "", fmt.Errorf("exchanged token issued to %q, not %s", c.Azp, g.cfg.ClientID)
 	}
+	slog.Debug("token exchanged", "subject", p.claims, "exchanged", c)
 	return r.AccessToken, nil
 }

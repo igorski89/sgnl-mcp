@@ -35,6 +35,9 @@ func (t *Tools) Register(s *mcp.Server) {
 func add[In, Out any](s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
 	mcp.AddTool(s, tool, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		start := time.Now()
+		if req != nil && req.Extra != nil {
+			ctx = auth.WithRequest(ctx, req.Extra.TokenInfo)
+		}
 		c, _ := auth.Person(ctx)
 		res, out, err := h(ctx, req, in)
 		l := slog.With("tool", tool.Name, "user", c.Username, "ms", time.Since(start).Milliseconds())

@@ -12,6 +12,7 @@
 //	                        person's token must carry it in "aud"
 //	SGNL_MCP_CLIENT_SECRET  its secret (token exchange)
 //	SGNL_MCP_JMAP_URL       JMAP session URL, e.g. https://mail.example.com/jmap/session
+//	SGNL_MCP_DEBUG          set: also log each token exchange (claims, never tokens)
 package main
 
 import (
@@ -44,6 +45,9 @@ func env(k, def string) string {
 }
 
 func main() {
+	if os.Getenv("SGNL_MCP_DEBUG") != "" {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	}
 	label := env("SGNL_MCP_LABEL", "")
 	public := env("SGNL_MCP_PUBLIC_URL", "http://localhost:8765/mcp")
 	addr := env("SGNL_MCP_ADDR", "127.0.0.1:8765")
