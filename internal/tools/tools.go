@@ -17,6 +17,9 @@ type Tools struct {
 	JMAP  *jmap.Client
 	Files *opencloud.Client // nil: no file tools
 	TZ    string            // the instance's time zone (IANA), for "today" and new events
+	// Experiments: off unless named in SGNL_MCP_EXPERIMENTS ("confirm":
+	// confirm_test, which asks the person a question and changes nothing).
+	Experiments map[string]bool
 }
 
 // Register adds every tool to s. Each call is logged: who, which tool,
@@ -74,6 +77,10 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "List a folder's contents; without a path: your spaces (personal and project spaces) to start from."}, t.folderList)
 		add(s, &mcp.Tool{Name: "file_save", Annotations: wr,
 			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file; not shared with anyone."}, t.fileSave)
+	}
+	if t.Experiments["confirm"] {
+		add(s, &mcp.Tool{Name: "confirm_test", Annotations: ro,
+			Description: "Test only: asks the person a yes/no question in their app and reports the answer. Changes nothing."}, t.confirmTest)
 	}
 }
 
