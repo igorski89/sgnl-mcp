@@ -58,6 +58,30 @@ audience mapper adding the gateway's client id). Then, in Claude Code:
 claude mcp add --transport http --client-id <client> --callback-port <port> sgnl-<instance> <public url>
 ```
 
+## Container
+
+`ghcr.io/igorski89/sgnl-mcp:<version>` (published for `v*` tags; see
+`Dockerfile`) listens on `0.0.0.0:8765`, logs JSON lines and serves
+`/health`. Off loopback it refuses to start unless it is told who may use
+it: `SGNL_MCP_ALLOW_USERS` (usernames or emails) and/or
+`SGNL_MCP_ALLOW_GROUPS`, or `SGNL_MCP_ALLOW_ALL=1`. `SGNL_MCP_DEBUG` works
+only on loopback.
+
+## Guard rails
+
+- Mail: drafts only, never sent by the gateway on its own; drafts stay in
+  Drafts; nothing is deleted except a draft being replaced.
+- Calendar: private events only (no participants, so no invitations).
+- Files: only new files; saving into a shared space needs the person's
+  confirmation.
+- Confirmations are asked of the person through MCP elicitation and bound
+  to the exact request; the model only sees the outcome. Clients without
+  elicitation can't do confirmed actions.
+- Mail and file text reaches the model as a person would see it: hidden
+  HTML text and invisible characters are dropped.
+- Per person: rate limits per kind of call; every call is logged with its
+  outcome, never content.
+
 ## License
 
 MIT
