@@ -484,6 +484,7 @@ func (t *Tools) mailboxList(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 type DraftIn struct {
 	To        []string `json:"to,omitempty" jsonschema:"recipients (address or Name <address>); for a reply defaults to the sender"`
 	Cc        []string `json:"cc,omitempty"`
+	Bcc       []string `json:"bcc,omitempty" jsonschema:"hidden recipients (note: mail_send can't send drafts with Bcc yet)"`
 	Subject   string   `json:"subject,omitempty" jsonschema:"for a reply/forward defaults to Re:/Fwd: of the original"`
 	Body      string   `json:"body" jsonschema:"plain text"`
 	ReplyTo   string   `json:"reply_to,omitempty" jsonschema:"message id to reply to (quotes it, threads the reply)"`
@@ -505,7 +506,7 @@ func (t *Tools) mailDraftCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, DraftOut{}, err
 	}
-	d := draft{to: toAddrs(in.To), cc: toAddrs(in.Cc), subject: in.Subject, body: in.Body}
+	d := draft{to: toAddrs(in.To), cc: toAddrs(in.Cc), bcc: toAddrs(in.Bcc), subject: in.Subject, body: in.Body}
 	if in.ReplyTo != "" || in.ForwardOf != "" {
 		id := in.ReplyTo + in.ForwardOf
 		es, err := t.getEmails(ctx, tok, s, acct, []string{id}, 6000)
@@ -554,6 +555,7 @@ type DraftUpdateIn struct {
 	ID      string   `json:"id" jsonschema:"draft id"`
 	To      []string `json:"to,omitempty" jsonschema:"replaces the recipients if given"`
 	Cc      []string `json:"cc,omitempty"`
+	Bcc     []string `json:"bcc,omitempty" jsonschema:"replaces the hidden recipients if given (empty list: none)"`
 	Subject string   `json:"subject,omitempty" jsonschema:"changing a reply's subject moves it out of its conversation"`
 	Body    string   `json:"body,omitempty" jsonschema:"replaces the whole text if given"`
 }
@@ -585,6 +587,9 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 	if in.Cc != nil {
 		d.cc = toAddrs(in.Cc)
+	}
+	if in.Bcc != nil {
+		d.bcc = toAddrs(in.Bcc)
 	}
 	if in.Subject != "" {
 		d.subject = in.Subject
