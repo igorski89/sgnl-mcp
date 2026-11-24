@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -38,11 +39,25 @@ const confirmTTL = 10 * time.Minute
 
 // confirmState binds an answer to this tool, these exact arguments and this
 // person, until a deadline: an accept can't be replayed for another action.
-func confirmState(tool string, args []byte, who string, until int64) string {
+func confirmState(tool string, args []byte, who, bind string, until int64) string {
 	m := hmac.New(sha256.New, confirmKey)
-	fmt.Fprintf(m, "%s\x00%s\x00%d\x00", tool, who, until)
-	m.Write(args)
+	fmt.Fprintf(m, "%s\x00%s\x00%d\x00%s\x00", tool, who, until, bind)
+	m.Write(canonical(args))
 	return strconv.FormatInt(until, 10) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+}
+
+// canonical: the arguments with keys sorted and spacing normalised, so a
+// client that re-serialises them on the second call isn't refused.
+func canonical(args []byte) []byte {
+	var v any
+	if json.Unmarshal(args, &v) != nil {
+		return args
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return args
+	}
+	return b
 }
 
 // confirm asks the person and reports whether they accepted. The first
@@ -50,7 +65,10 @@ func confirmState(tool string, args []byte, who string, until int64) string {
 // SEP-2322; for older clients the SDK asks directly and calls again); the
 // caller returns it as is. On the call that carries the answer, res is nil
 // and ok says whether the person explicitly accepted.
-func confirm(ctx context.Context, req *mcp.CallToolRequest, message string) (res *mcp.CallToolResult, ok bool, err error) {
+//
+// bind: what the person was shown, beyond the arguments (e.g. the exact
+// mail and its recipients); the answer only counts if it is unchanged.
+func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind string) (res *mcp.CallToolResult, ok bool, err error) {
 	if req == nil || req.Session == nil || req.Params == nil {
 		return nil, false, errNoConfirm
 	}
@@ -68,14 +86,14 @@ func confirm(ctx context.Context, req *mcp.CallToolRequest, message string) (res
 				Message:         message,
 				RequestedSchema: map[string]any{"type": "object", "properties": map[string]any{}},
 			}},
-			RequestState: confirmState(req.Params.Name, req.Params.Arguments, who, until),
+			RequestState: confirmState(req.Params.Name, req.Params.Arguments, who, bind, until),
 		}, false, nil
 	}
 	ts, _, _ := strings.Cut(req.Params.RequestState, ".")
 	until, perr := strconv.ParseInt(ts, 10, 64)
-	want := confirmState(req.Params.Name, req.Params.Arguments, who, until)
+	want := confirmState(req.Params.Name, req.Params.Arguments, who, bind, until)
 	if perr != nil || !hmac.Equal([]byte(want), []byte(req.Params.RequestState)) {
-		return nil, false, fmt.Errorf("the confirmation doesn't match this request: ask again")
+		return nil, false, fmt.Errorf("the confirmation doesn't match this request, or what it shows has changed since: ask again")
 	}
 	if time.Now().Unix() > until {
 		return nil, false, fmt.Errorf("the confirmation expired: ask again")
@@ -94,7 +112,7 @@ type ConfirmTestOut struct {
 }
 
 func (t *Tools) confirmTest(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ConfirmTestOut, error) {
-	res, ok, err := confirm(ctx, req, "SGNL MCP test: approve this test question? Nothing happens either way.")
+	res, ok, err := confirm(ctx, req, "SGNL MCP test: approve this test question? Nothing happens either way.", "")
 	if err != nil || res != nil {
 		return res, ConfirmTestOut{}, err
 	}

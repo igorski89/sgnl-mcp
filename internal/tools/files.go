@@ -157,7 +157,7 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 		return nil, FileSaveOut{}, fmt.Errorf("folder must come from folder_list")
 	}
 	if sp.Type != "personal" {
-		res, ok, err := confirm(ctx, req, fmt.Sprintf("Save a new file %q (%d bytes) into the shared space %q? Everyone with access to that space will see it.", in.Name, len(in.Content), sp.Name))
+		res, ok, err := confirm(ctx, req, fmt.Sprintf("Save a new file %q (%d bytes) into the shared space %q? Everyone with access to that space will see it.", in.Name, len(in.Content), sp.Name), sp.Path)
 		if err != nil || res != nil {
 			return res, FileSaveOut{}, err
 		}

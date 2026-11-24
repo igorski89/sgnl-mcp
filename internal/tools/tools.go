@@ -13,8 +13,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// Tokens: how tools get a token for an app on the person's behalf
+// (*auth.Gateway; a fake in tests).
+type Tokens interface {
+	AppToken(ctx context.Context) (string, error)
+	SameIdentityToken(ctx context.Context) (string, error)
+}
+
 type Tools struct {
-	Auth  *auth.Gateway
+	Auth  Tokens
 	JMAP  *jmap.Client
 	Files *opencloud.Client // nil: no file tools
 	TZ    string            // the instance's time zone (IANA), for "today" and new events
@@ -22,7 +29,10 @@ type Tools struct {
 	// confirm_test, which asks the person a question and changes nothing).
 	Experiments map[string]bool
 	Access      Access // who may use the gateway
-	limits      limiter
+	// InternalDomains: the company's mail domains (default: the person's own).
+	InternalDomains []string
+	limits          limiter
+	outside         seen
 }
 
 // Register adds every tool to s. Each call is logged: who, which tool,
@@ -49,6 +59,8 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Read the text of a message's attachment (PDF, Word .docx, text, CSV, HTML)." + mailNote}, t.mailAttachmentRead)
 	add(t, s, &mcp.Tool{Name: "mailbox_list", Annotations: ro,
 		Description: "Your mail folders with unread and total counts."}, t.mailboxList)
+	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
+		Description: "Send a draft (from Drafts) as it is. The person is asked in their app first, with every recipient shown; nothing is sent without their yes. To change the mail, update the draft first."}, t.mailSend)
 	add(t, s, &mcp.Tool{Name: "mail_draft_create", Annotations: wr,
 		Description: "Write a new mail, a reply (reply_to, optionally reply_all) or a forward (forward_of) and save it in Drafts. It is NEVER sent: you review and send it from your mail app."}, t.mailDraftCreate)
 	add(t, s, &mcp.Tool{Name: "mail_draft_update", Annotations: wr,

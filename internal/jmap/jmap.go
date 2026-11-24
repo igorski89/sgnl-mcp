@@ -37,6 +37,52 @@ var allowed = []string{
 	"Principal/get", "Principal/query", "Principal/getAvailability",
 }
 
+// checkSend: EmailSubmission/set as mail_send uses it, and nothing else.
+func checkSend(call Call) error {
+	if !call.Send {
+		return fmt.Errorf("jmap: EmailSubmission/set is not allowed")
+	}
+	for k, v := range call.Args {
+		switch k {
+		case "accountId", "create":
+		case "onSuccessUpdateEmail":
+			m, _ := v.(map[string]any)
+			for ref, patch := range m {
+				p, _ := patch.(map[string]any)
+				if !strings.HasPrefix(ref, "#") || p == nil {
+					return fmt.Errorf("jmap: send: onSuccessUpdateEmail must patch the submitted mail")
+				}
+				for f, val := range p {
+					switch {
+					case f == "keywords/$draft" && val == nil:
+					case strings.HasPrefix(f, "mailboxIds/") && (val == nil || val == true):
+					default:
+						return fmt.Errorf("jmap: send: on success only Drafts -> Sent is allowed, not %s", f)
+					}
+				}
+			}
+		default:
+			return fmt.Errorf("jmap: send: %s is not allowed", k)
+		}
+	}
+	c, _ := call.Args["create"].(map[string]any)
+	if len(c) != 1 {
+		return fmt.Errorf("jmap: send: exactly one mail at a time")
+	}
+	for _, sub := range c {
+		m, _ := sub.(map[string]any)
+		if m["emailId"] == nil || m["identityId"] == nil {
+			return fmt.Errorf("jmap: send: emailId and identityId are required")
+		}
+		for f := range m {
+			if f != "emailId" && f != "identityId" {
+				return fmt.Errorf("jmap: send: %s is not allowed (recipients come from the mail itself)", f)
+			}
+		}
+	}
+	return nil
+}
+
 // Session: the parts of the JMAP session object we use.
 type Session struct {
 	APIURL          string            `json:"apiUrl"`
@@ -96,10 +142,18 @@ type Call struct {
 	// DestroyDraft: the only destroy ever sent, for replacing a draft the
 	// caller has checked is a draft ($draft, in the Drafts mailbox).
 	DestroyDraft bool
+	// Send: the only EmailSubmission ever sent, for mail_send after the
+	// person confirmed. Only "create" of {emailId, identityId} (recipients
+	// come from the draft's own headers, as shown to the person), and on
+	// success only moving the mail from Drafts to Sent.
+	Send bool
 }
 
 // check enforces the limits above on one call.
 func check(call Call) error {
+	if call.Method == "EmailSubmission/set" {
+		return checkSend(call)
+	}
 	if !slices.Contains(allowed, call.Method) {
 		return fmt.Errorf("jmap: %s is not allowed", call.Method)
 	}

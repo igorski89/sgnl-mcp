@@ -148,6 +148,7 @@ func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct str
 	}
 	out := []MailSummary{}
 	for _, e := range got.List {
+		t.sawMail(ctx, e.From)
 		out = append(out, MailSummary{e.ID, addrs(e.From), textx.Visible(e.Subject), e.ReceivedAt, !e.Keywords["$seen"], textx.Visible(e.Preview)})
 	}
 	return out, nil
@@ -250,6 +251,9 @@ type emailFull struct {
 	ID           string `json:"id"`
 	ThreadID     string `json:"threadId"`
 	From, To, Cc []address
+	Bcc          []address       `json:"bcc"`
+	ReplyTo      []address       `json:"replyTo"`
+	BlobID       string          `json:"blobId"`
 	Subject      string          `json:"subject"`
 	ReceivedAt   string          `json:"receivedAt"`
 	MessageID    []string        `json:"messageId"`
@@ -266,7 +270,7 @@ type emailFull struct {
 	Attachments []part `json:"attachments"`
 }
 
-var fullProps = []string{"id", "threadId", "from", "to", "cc", "subject", "receivedAt", "messageId", "inReplyTo", "references",
+var fullProps = []string{"id", "threadId", "blobId", "from", "to", "cc", "bcc", "replyTo", "subject", "receivedAt", "messageId", "inReplyTo", "references",
 	"keywords", "mailboxIds", "textBody", "htmlBody", "bodyValues", "attachments"}
 
 // getEmails: maxText is the text the caller wants; HTML is mostly markup,
@@ -281,6 +285,9 @@ func (t *Tools) getEmails(ctx context.Context, tok string, s *jmap.Session, acct
 	}
 	var got struct{ List []emailFull }
 	err = json.Unmarshal(r[0], &got)
+	for _, e := range got.List {
+		t.sawMail(ctx, e.From)
+	}
 	return got.List, err
 }
 
@@ -558,7 +565,7 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err := replaceable(o, in.Body != ""); err != nil {
 		return nil, DraftOut{}, err
 	}
-	d := draft{to: o.To, cc: o.Cc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: o.InReplyTo, references: o.References}
+	d := draft{to: o.To, cc: o.Cc, bcc: o.Bcc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: o.InReplyTo, references: o.References}
 	if in.To != nil {
 		d.to = toAddrs(in.To)
 	}
@@ -594,7 +601,7 @@ func replaceable(o emailFull, newBody bool) error {
 }
 
 type draft struct {
-	to, cc                []address
+	to, cc, bcc           []address
 	subject, body         string
 	inReplyTo, references []string
 }
@@ -669,7 +676,7 @@ func draftEmail(d draft, draftsID string, from address) map[string]any {
 		"bodyValues": map[string]any{"b": map[string]string{"value": d.body}},
 		"textBody":   []map[string]string{{"partId": "b", "type": "text/plain"}},
 	}
-	for k, v := range map[string][]address{"to": d.to, "cc": d.cc} {
+	for k, v := range map[string][]address{"to": d.to, "cc": d.cc, "bcc": d.bcc} {
 		if len(v) > 0 {
 			e[k] = v
 		}

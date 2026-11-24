@@ -69,8 +69,12 @@ only on loopback.
 
 ## Guard rails
 
-- Mail: drafts only, never sent by the gateway on its own; drafts stay in
-  Drafts; nothing is deleted except a draft being replaced.
+- Mail: the gateway writes drafts; `mail_send` sends a draft only after
+  the person says yes in their app, shown every recipient (Bcc included)
+  and what is special about them (outside the company, never written to
+  before), plus a warning when outside mail was read shortly before.
+  Sender and Reply-To must be the person's own; at most 50 recipients;
+  drafts stay in Drafts; nothing is deleted except a draft being replaced.
 - Calendar: private events only (no participants, so no invitations).
 - Files: only new files; saving into a shared space needs the person's
   confirmation.
