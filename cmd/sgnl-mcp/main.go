@@ -147,7 +147,10 @@ func main() {
 
 	prm := mcpauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
 		Resource: public, ResourceName: label, AuthorizationServers: []string{cfg.Issuer},
-		ScopesSupported: strings.Fields(auth.ExchangeScope), BearerMethodsSupported: []string{"header"}})
+		// offline_access: clients that ask for every listed scope (Claude Code)
+		// then get a refresh token from issuers that require it (Authelia).
+		// The exchange itself never asks for it.
+		ScopesSupported: append(strings.Fields(auth.ExchangeScope), "offline_access"), BearerMethodsSupported: []string{"header"}})
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/oauth-protected-resource", prm)
 	mux.Handle(prmPath, prm)
