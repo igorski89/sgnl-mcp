@@ -32,7 +32,9 @@ type Tools struct {
 	// trusted to show a confirmation to the person rather than answer it
 	// themselves; others can't send or save to shared spaces. Empty: all.
 	ConfirmClients []string
-	Access         Access // who may use the gateway
+	// Probes: the instance's other apps (name → an API URL), for aud_check.
+	Probes map[string]string
+	Access Access // who may use the gateway
 	// InternalDomains: the company's mail domains (default: the person's own).
 	InternalDomains []string
 	limits          limiter
