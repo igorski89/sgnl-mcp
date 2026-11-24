@@ -121,9 +121,19 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 		}
 		c, _ := auth.Person(ctx)
 		l := slog.With("tool", tool.Name, "kind", kind, "user", c.Username)
-		if !t.Access.Allows(c) {
-			l.Warn("tool refused", "outcome", "no access")
-			return nil, zero, fmt.Errorf("SGNL MCP isn't switched on for you: ask an admin")
+		// Who may use it is decided on the person as the login server has
+		// them now (not the groups of their original login), so removing
+		// someone takes effect within minutes.
+		if !t.Access.All {
+			cur, ok := auth.Current(ctx)
+			if !ok {
+				l.Warn("tool refused", "outcome", "access not checkable")
+				return nil, zero, fmt.Errorf("couldn't check with the login server whether SGNL MCP is switched on for you: try again in a moment")
+			}
+			if !t.Access.Allows(cur) {
+				l.Warn("tool refused", "outcome", "no access")
+				return nil, zero, fmt.Errorf("SGNL MCP isn't switched on for you: ask an admin")
+			}
 		}
 		if err := t.limits.allow(c.Username, kind); err != nil {
 			l.Warn("tool refused", "outcome", "rate limited")

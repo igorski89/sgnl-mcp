@@ -27,7 +27,8 @@ func jwt(c Claims) string {
 // those revoked, counting exchanges.
 var asked = struct {
 	sync.Mutex
-	aud []string
+	aud    []string
+	groups []string // the user store's groups now (nil: as in the login)
 }{}
 
 func fakeIssuer(t *testing.T) (g *Gateway, n *atomic.Int32, revoke func(string)) {
@@ -35,7 +36,7 @@ func fakeIssuer(t *testing.T) (g *Gateway, n *atomic.Int32, revoke func(string))
 	var mu sync.Mutex
 	revoked := map[string]bool{}
 	asked.Lock()
-	asked.aud = nil
+	asked.aud, asked.groups = nil, nil
 	asked.Unlock()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
@@ -57,6 +58,9 @@ func fakeIssuer(t *testing.T) (g *Gateway, n *atomic.Int32, revoke func(string))
 		}
 		asked.Lock()
 		asked.aud = append(asked.aud, r.Form.Get("audience"))
+		if asked.groups != nil {
+			sub.Groups = asked.groups
+		}
 		asked.Unlock()
 		fmt.Fprintf(w, `{"access_token":%q}`, jwt(sub))
 	}))
@@ -181,5 +185,40 @@ func TestPolicyDeniedMessages(t *testing.T) {
 	}
 	if g.policyDenied("... Token is not valid or has expired.", "opencloud") != nil {
 		t.Fatal("an ended login is not a policy denial")
+	}
+}
+
+// Removing someone from a group takes effect at the next login check after
+// the cached exchange runs out (minutes), though their login token (and its
+// refreshes) still lists the group.
+func TestCurrentGroupsFollowTheUserStore(t *testing.T) {
+	g, _, _ := fakeIssuer(t)
+	tok := login(1) // lists group "g"
+	check := func() (Claims, bool) {
+		ti, err := g.verified(context.Background(), tok, PeekClaims(tok), time.Now().Add(time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Current(WithRequest(context.Background(), ti))
+	}
+	if c, ok := check(); !ok || !slices.Contains(c.Groups, "g") {
+		t.Fatalf("before: %v %v", ok, c.Groups)
+	}
+	asked.Lock()
+	asked.groups = []string{"other"} // removed from "g" at the login server
+	asked.Unlock()
+	if c, _ := check(); !slices.Contains(c.Groups, "g") {
+		t.Fatalf("within the cache time the cached answer stands: %v", c.Groups)
+	}
+	g.now = func() time.Time { return time.Now().Add(5 * time.Minute) }
+	if c, ok := check(); !ok || slices.Contains(c.Groups, "g") {
+		t.Fatalf("after the cache time the removal must show: %v %v", ok, c.Groups)
+	}
+}
+
+// If the login check couldn't ask the issuer, there is no current view.
+func TestCurrentUnknownWithoutExchange(t *testing.T) {
+	if _, ok := Current(as(login(1))); ok {
+		t.Fatal("no exchange, yet a current view")
 	}
 }

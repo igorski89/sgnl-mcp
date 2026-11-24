@@ -173,6 +173,10 @@ type ctxKey struct{}
 type person struct {
 	token  string
 	claims Claims
+	// current: the person as the issuer's user store has them now (from
+	// the login check's exchange); nil if that exchange failed. Logins
+	// and their refreshes keep the groups of the original login.
+	current *Claims
 }
 
 // Verify is the MCP SDK's TokenVerifier: signature, issuer, expiry, audience.
@@ -195,33 +199,49 @@ func (g *Gateway) verified(ctx context.Context, tok string, c Claims, exp time.T
 		slog.Info("token refused", "reason", "audience", "claims", c)
 		return nil, fmt.Errorf("%w: audience", mcpauth.ErrInvalidToken)
 	}
-	if err := g.admit(ctx, person{tok, c}); err != nil {
+	cur, err := g.admit(ctx, person{token: tok, claims: c})
+	if err != nil {
 		return nil, err
 	}
-	return TokenInfo(tok, c, exp), nil
+	ti := TokenInfo(tok, c, exp)
+	ti.Extra["person"] = person{token: tok, claims: c, current: cur}
+	return ti, nil
 }
 
 // admit exchanges a verified login token up front (cached for the tools).
 // A refusal by the issuer is a 401; any other failure (issuer down,
 // configuration) lets the request through, and the tool reports it.
-func (g *Gateway) admit(ctx context.Context, p person) error {
+func (g *Gateway) admit(ctx context.Context, p person) (*Claims, error) {
 	// Checked without an app audience: whether the login is still valid,
 	// not whether one app's access policy lets the person in.
-	_, _, err := g.appTokenFor(ctx, p, "")
+	_, c, err := g.appTokenFor(ctx, p, "")
 	if errors.Is(err, ErrAppTokenRefused) {
 		slog.Info("token refused", "reason", "the login server refused to exchange it", "claims", p.claims)
-		return fmt.Errorf("%w: the login server no longer accepts this login", mcpauth.ErrInvalidToken)
+		return nil, fmt.Errorf("%w: the login server no longer accepts this login", mcpauth.ErrInvalidToken)
 	}
 	if err != nil {
 		slog.Warn("exchange at login check failed; the tool will retry", "error", err.Error(), "claims", p.claims)
+		return nil, nil
 	}
-	return nil
+	if d := identityDiff(p.claims, c); d != "" {
+		slog.Warn("login check: the exchanged token's identity differs", "field", d, "claims", p.claims)
+		return nil, nil
+	}
+	return &c, nil
 }
 
 // TokenInfo: what Verify hands the SDK for a verified token.
 func TokenInfo(tok string, c Claims, exp time.Time) *mcpauth.TokenInfo {
 	return &mcpauth.TokenInfo{Scopes: c.Scopes(), Expiration: exp, UserID: c.Sub,
-		Extra: map[string]any{"person": person{tok, c}}}
+		Extra: map[string]any{"person": person{token: tok, claims: c}}}
+}
+
+// TokenInfoNow: TokenInfo with the person as the issuer has them now (for
+// tests; the gateway's verifier fills it from its login check).
+func TokenInfoNow(tok string, c, now Claims, exp time.Time) *mcpauth.TokenInfo {
+	ti := TokenInfo(tok, c, exp)
+	ti.Extra["person"] = person{token: tok, claims: c, current: &now}
+	return ti
 }
 
 // Token: the caller's raw token (for tests and the exchange).
@@ -230,7 +250,18 @@ func Token(ctx context.Context) string {
 	return p.token
 }
 
-// Person: the verified caller of a tool.
+// Current: the caller as the issuer has them now (groups and name from
+// its user store, refreshed at least every few minutes); false if that
+// couldn't be checked.
+func Current(ctx context.Context) (Claims, bool) {
+	p, err := from(ctx)
+	if err != nil || p.current == nil {
+		return Claims{}, false
+	}
+	return *p.current, true
+}
+
+// Person: the verified caller of a tool (as their login says).
 func Person(ctx context.Context) (Claims, error) {
 	p, err := from(ctx)
 	return p.claims, err
