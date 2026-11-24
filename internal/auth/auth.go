@@ -89,7 +89,10 @@ func PeekClaims(tok string) (c Claims) {
 
 type Config struct {
 	Issuer       string // e.g. https://id.example.com/realms/example
-	Audience     string // what a person's token must carry in "aud" (the gateway's client id)
+	// Audiences: a person's token must carry one of these in "aud": the
+	// gateway's client id (Keycloak's audience mapper) or its public URL
+	// (RFC 8707 resource indicators, which Claude Code sends).
+	Audiences    []string
 	ClientID     string // the gateway's client, for the exchange
 	ClientSecret string
 }
@@ -128,7 +131,7 @@ func (g *Gateway) Verify(ctx context.Context, tok string, _ *http.Request) (*mcp
 	if err := t.Claims(&c); err != nil {
 		return nil, fmt.Errorf("%w: %v", mcpauth.ErrInvalidToken, err)
 	}
-	if !slices.Contains(c.Aud, g.cfg.Audience) {
+	if !slices.ContainsFunc(g.cfg.Audiences, func(a string) bool { return slices.Contains(c.Aud, a) }) {
 		slog.Info("token refused", "reason", "audience", "claims", c)
 		return nil, fmt.Errorf("%w: audience", mcpauth.ErrInvalidToken)
 	}

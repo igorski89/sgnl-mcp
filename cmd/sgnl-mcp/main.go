@@ -111,7 +111,7 @@ func main() {
 		access.All = true
 	}
 	clientID := env("SGNL_MCP_CLIENT_ID", "sgnl-mcp")
-	cfg := auth.Config{Issuer: env("SGNL_MCP_ISSUER", ""), Audience: clientID, ClientID: clientID,
+	cfg := auth.Config{Issuer: env("SGNL_MCP_ISSUER", ""), Audiences: []string{clientID, public}, ClientID: clientID,
 		ClientSecret: env("SGNL_MCP_CLIENT_SECRET", "")}
 	jmapURL := env("SGNL_MCP_JMAP_URL", "")
 
