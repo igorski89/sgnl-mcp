@@ -5,18 +5,37 @@ The MCP gateway of an [SGNL](https://github.com/igorski89/sgnl) instance: one
 instance's apps, so a person can work with their mail, calendar and files
 from Claude, Codex or their own client, logged in with their SGNL account.
 
-Status: proof of concept (M2): reads plus private, reversible writes. Nothing is ever sent, shared or deleted.
+Status: proof of concept (M2+): reads, private and reversible writes, and
+sending a draft after the person confirms it. Nothing is ever deleted, and
+nothing is sent without that confirmation.
+
+For people using it: [docs/user-guide.md](docs/user-guide.md) (what to ask, what
+needs your click, staying safe).
 
 ## Tools
 
 | tool | app | does |
 |---|---|---|
 | `whoami` | login server | username, name, email, groups |
-| `mail_search` | mail (JMAP) | messages matching words / sender / date: id, sender, subject, date, preview |
-| `mail_read` | mail (JMAP) | one message as plain text, attachments listed |
-| `calendar_list` | calendar (JMAP) | events in a date range |
-| `files_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
-| `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, JSON, YAML, .docx) |
+| `day_overview` | all | today's events, unread mail, files changed today |
+| `mail_search` | mail (JMAP) | messages by words / sender / date / folder / unread: id, folder, sender, subject, date, preview |
+| `mail_read` | mail (JMAP) | one message as plain text (hidden text removed), attachments listed |
+| `mail_thread_read` | mail (JMAP) | a whole conversation |
+| `mail_attachment_read` | mail (JMAP) | an attachment as text |
+| `mailbox_list` | mail (JMAP) | folders with unread counts |
+| `mail_draft_create` | mail (JMAP) | new mail, reply, reply-all or forward, saved in Drafts |
+| `mail_draft_update` | mail (JMAP) | change a draft (replaced by a new draft) |
+| `mail_flag` | mail (JMAP) | read / unread, flagged |
+| `mail_move` | mail (JMAP) | move between folders; never to Trash, Junk, Sent or Drafts |
+| `mail_send` | mail (JMAP) | send a draft, **only after the person confirms** |
+| `event_list` | calendar (JMAP) | events in a date range |
+| `event_create` | calendar (JMAP) | a private event, no participants |
+| `availability_get` | calendar (JMAP) | colleagues' free/busy |
+| `contact_search` | contacts (JMAP) | address book and company directory |
+| `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
+| `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx) |
+| `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
+| `file_save` | files (OpenCloud) | a new text file, never overwriting; **shared spaces need a confirmation** |
 
 ## How it works
 
