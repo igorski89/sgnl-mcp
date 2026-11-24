@@ -337,3 +337,18 @@ func TestSendRefusedForUntrustedClient(t *testing.T) {
 		t.Fatalf("got %q, %d submissions", resultText(r), len(f.submissions))
 	}
 }
+
+// With the bcc experiment (verification only), a Bcc draft goes to the
+// person's confirmation, Bcc shown.
+func TestSendBccOnlyAsExperiment(t *testing.T) {
+	f := newFakeMail()
+	f.draft["bcc"] = []map[string]any{{"email": "b@co.example"}}
+	var asked string
+	cs := sendSessionWith(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = r.Params.Message
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	}, false, func(tl *Tools) { tl.Experiments = map[string]bool{"bcc": true} })
+	if r := send(t, cs); r.IsError || !strings.Contains(asked, "Bcc: b@co.example") || len(f.submissions) != 1 {
+		t.Fatalf("%q, asked %q", resultText(r), asked)
+	}
+}
