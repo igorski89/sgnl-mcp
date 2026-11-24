@@ -37,6 +37,17 @@ needs your click, staying safe).
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
 | `file_save` | files (OpenCloud) | a new text file, never overwriting; **shared spaces need a confirmation** |
 
+## Admin endpoint
+
+With `SGNL_MCP_ADMIN_CLIENT_ID` / `SGNL_MCP_ADMIN_CLIENT_SECRET` set, the
+gateway also serves `<public host>/admin/mcp`, a separate MCP connection with
+read-only admin tools (`admin_users`, `admin_user`, `admin_groups`,
+`admin_events`, `admin_audit`) over the login server's admin API. It takes
+only tokens issued for it (its URL in `aud`), and only members of
+`SGNL_MCP_ADMIN_GROUPS` (default `admins`) by the login server's current
+groups. The admin client is the one master credential the gateway holds:
+read scope only, every call logged with the acting person.
+
 ## How it works
 
 - **Login:** the gateway is an OAuth 2.1 resource server. It publishes

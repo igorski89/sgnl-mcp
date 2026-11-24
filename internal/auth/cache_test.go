@@ -222,3 +222,19 @@ func TestCurrentUnknownWithoutExchange(t *testing.T) {
 		t.Fatal("no exchange, yet a current view")
 	}
 }
+
+// A token for the normal endpoint can't be used at the admin endpoint: that
+// one only takes tokens whose aud names it.
+func TestAdminEndpointNeedsItsOwnAudience(t *testing.T) {
+	g, _, _ := fakeIssuer(t)
+	tok := login(1) // aud [gw]
+	if _, err := g.verifiedFor(context.Background(), tok, PeekClaims(tok), time.Now().Add(time.Minute), []string{"https://x/admin/mcp"}); err == nil {
+		t.Fatal("a normal token was accepted at the admin endpoint")
+	}
+	c := PeekClaims(tok)
+	c.Aud = Audience{"gw", "https://x/admin/mcp"}
+	tok = jwt(c)
+	if _, err := g.verifiedFor(context.Background(), tok, PeekClaims(tok), time.Now().Add(time.Minute), []string{"https://x/admin/mcp"}); err != nil {
+		t.Fatal(err)
+	}
+}

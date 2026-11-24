@@ -170,6 +170,9 @@ func New(ctx context.Context, cfg Config) (*Gateway, error) {
 			Now: func() time.Time { return time.Now().Add(expiryMargin) }})}, nil
 }
 
+// TokenURL: the issuer's token endpoint (from its discovery).
+func (g *Gateway) TokenURL() string { return g.tokenURL }
+
 type ctxKey struct{}
 
 type person struct {
@@ -182,7 +185,19 @@ type person struct {
 }
 
 // Verify is the MCP SDK's TokenVerifier: signature, issuer, expiry, audience.
-func (g *Gateway) Verify(ctx context.Context, tok string, _ *http.Request) (*mcpauth.TokenInfo, error) {
+func (g *Gateway) Verify(ctx context.Context, tok string, r *http.Request) (*mcpauth.TokenInfo, error) {
+	return g.VerifyFor(g.cfg.Audiences)(ctx, tok, r)
+}
+
+// VerifyFor: Verify for another endpoint of the gateway (e.g. the admin
+// one), whose tokens must name one of auds instead.
+func (g *Gateway) VerifyFor(auds []string) mcpauth.TokenVerifier {
+	return func(ctx context.Context, tok string, _ *http.Request) (*mcpauth.TokenInfo, error) {
+		return g.verify(ctx, tok, auds)
+	}
+}
+
+func (g *Gateway) verify(ctx context.Context, tok string, auds []string) (*mcpauth.TokenInfo, error) {
 	t, err := g.verifier.Verify(ctx, tok)
 	if err != nil {
 		slog.Info("token refused", "reason", err.Error())
@@ -192,12 +207,16 @@ func (g *Gateway) Verify(ctx context.Context, tok string, _ *http.Request) (*mcp
 	if err := t.Claims(&c); err != nil {
 		return nil, fmt.Errorf("%w: %v", mcpauth.ErrInvalidToken, err)
 	}
-	return g.verified(ctx, tok, c, t.Expiry)
+	return g.verifiedFor(ctx, tok, c, t.Expiry, auds)
 }
 
 // verified: the checks after the signature, issuer and expiry.
 func (g *Gateway) verified(ctx context.Context, tok string, c Claims, exp time.Time) (*mcpauth.TokenInfo, error) {
-	if !slices.ContainsFunc(g.cfg.Audiences, func(a string) bool { return slices.Contains(c.Aud, a) }) {
+	return g.verifiedFor(ctx, tok, c, exp, g.cfg.Audiences)
+}
+
+func (g *Gateway) verifiedFor(ctx context.Context, tok string, c Claims, exp time.Time, auds []string) (*mcpauth.TokenInfo, error) {
+	if !slices.ContainsFunc(auds, func(a string) bool { return slices.Contains(c.Aud, a) }) {
 		slog.Info("token refused", "reason", "audience", "claims", c)
 		return nil, fmt.Errorf("%w: audience", mcpauth.ErrInvalidToken)
 	}
