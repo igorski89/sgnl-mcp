@@ -208,17 +208,35 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 
 	// What the person is asked, built only from the draft (made one-line,
 	// so nothing in it can pose as part of the question).
+	// First line: the essentials (clients may fold the rest away).
 	var b strings.Builder
 	outside, fresh := 0, 0
-	b.WriteString("Send this email now?\n\nFrom: " + oneLine(e.From[0].Email, 200) + "\n")
 	for _, x := range rs {
-		var tags []string
 		if x.outside {
 			outside++
-			tags = append(tags, "OUTSIDE the company")
 		}
 		if x.new_ {
 			fresh++
+		}
+	}
+	shown := make([]string, 0, 3)
+	for _, x := range rs[:min(3, len(rs))] {
+		shown = append(shown, oneLine(x.email, 80))
+	}
+	first := fmt.Sprintf("Send %q to %s", oneLine(e.Subject, 60), strings.Join(shown, ", "))
+	if len(rs) > 3 {
+		first += fmt.Sprintf(" and %d more", len(rs)-3)
+	}
+	if outside > 0 {
+		first += fmt.Sprintf(" (%d OUTSIDE the company)", outside)
+	}
+	b.WriteString(first + "?\n\nFrom: " + oneLine(e.From[0].Email, 200) + "\n")
+	for _, x := range rs {
+		var tags []string
+		if x.outside {
+			tags = append(tags, "OUTSIDE the company")
+		}
+		if x.new_ {
 			tags = append(tags, "never written to before")
 		}
 		line := x.field + ": " + oneLine(x.email, 200)
@@ -254,7 +272,7 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 	for _, x := range rs {
 		bind += "|" + x.field + ":" + x.email
 	}
-	res, ok, err := confirm(ctx, req, b.String(), bind)
+	res, ok, err := confirm(ctx, req, b.String(), bind, fmt.Sprintf("Yes, send this email to %d recipient(s)", len(rs)))
 	if err != nil || res != nil {
 		return res, MailSendOut{}, err
 	}

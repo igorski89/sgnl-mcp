@@ -121,7 +121,7 @@ func TestSendOnlyWithThePersonsYes(t *testing.T) {
 	var asked string
 	cs := sendSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		asked = r.Params.Message
-		return &mcp.ElicitResult{Action: "accept"}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
 	}, false)
 	if r := send(t, cs); r.IsError {
 		t.Fatalf("send failed: %s", resultText(r))
@@ -134,6 +134,9 @@ func TestSendOnlyWithThePersonsYes(t *testing.T) {
 		t.Errorf("submission: %v", sub)
 	}
 	// Every recipient is shown, Bcc included, with what is special about it.
+	if !strings.HasPrefix(asked, `Send "Offer" to colleague@co.example, client@other.example, hidden@other.example (2 OUTSIDE the company)?`) {
+		t.Errorf("first line lacks the essentials:\n%s", asked)
+	}
 	for _, w := range []string{"To: colleague@co.example\n", "To: client@other.example  (OUTSIDE the company, never written to before)",
 		"Bcc: hidden@other.example  (OUTSIDE the company, never written to before)", "Subject: Offer", "2 recipient(s) outside"} {
 		if !strings.Contains(asked, w) {
@@ -159,7 +162,7 @@ func TestSendOnlyWithThePersonsYes(t *testing.T) {
 func TestSendRefusals(t *testing.T) {
 	yes := func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		t.Error("asked the person, though the send should have been refused first")
-		return &mcp.ElicitResult{Action: "accept"}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
 	}
 	for name, change := range map[string]func(map[string]any){
 		"not a draft":      func(d map[string]any) { d["keywords"] = map[string]bool{} },
@@ -189,7 +192,7 @@ func manyAddrs(n int) []map[string]any {
 func TestSendRefusesAChangedDraft(t *testing.T) {
 	f := newFakeMail()
 	cs := sendSession(t, f, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-		return &mcp.ElicitResult{Action: "accept"}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
 	}, true)
 	first := send(t, cs)
 	if !first.NeedsInput() {
@@ -199,7 +202,7 @@ func TestSendRefusesAChangedDraft(t *testing.T) {
 	f.draft["blobId"] = "b2" // the draft's content was swapped meanwhile
 	f.mu.Unlock()
 	r, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "mail_send", Arguments: map[string]any{"id": "d1"},
-		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept"}}, RequestState: first.RequestState})
+		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}}, RequestState: first.RequestState})
 	if err != nil || !r.IsError || len(f.submissions) != 0 {
 		t.Errorf("changed draft sent: %v %s", err, resultText(r))
 	}

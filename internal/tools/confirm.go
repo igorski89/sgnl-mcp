@@ -68,7 +68,12 @@ func canonical(args []byte) []byte {
 //
 // bind: what the person was shown, beyond the arguments (e.g. the exact
 // mail and its recipients); the answer only counts if it is unchanged.
-func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind string) (res *mcp.CallToolResult, ok bool, err error) {
+//
+// check: the label of a box the person must tick. Some clients answer a
+// bare Accept/Decline question by themselves (Codex in its permissive
+// modes accepts an empty form); an accept without the ticked box counts
+// as a no.
+func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind, check string) (res *mcp.CallToolResult, ok bool, err error) {
 	if req == nil || req.Session == nil || req.Params == nil {
 		return nil, false, errNoConfirm
 	}
@@ -83,8 +88,9 @@ func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind string
 		until := time.Now().Add(confirmTTL).Unix()
 		return &mcp.CallToolResult{
 			InputRequests: mcp.InputRequestMap{"confirm": &mcp.ElicitParams{
-				Message:         message,
-				RequestedSchema: map[string]any{"type": "object", "properties": map[string]any{}},
+				Message: message,
+				RequestedSchema: map[string]any{"type": "object", "required": []string{"confirmed"},
+					"properties": map[string]any{"confirmed": map[string]any{"type": "boolean", "title": check, "default": false}}},
 			}},
 			RequestState: confirmState(req.Params.Name, req.Params.Arguments, who, bind, until),
 		}, false, nil
@@ -99,7 +105,7 @@ func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind string
 		return nil, false, fmt.Errorf("the confirmation expired: ask again")
 	}
 	r, _ := req.Params.InputResponses["confirm"].(*mcp.ElicitResult)
-	ok = r != nil && r.Action == "accept"
+	ok = r != nil && r.Action == "accept" && r.Content["confirmed"] == true
 	slog.Info("person answered", "tool", req.Params.Name, "user", who, "outcome", map[bool]string{true: "accepted", false: "declined"}[ok])
 	return nil, ok, nil
 }
@@ -112,7 +118,7 @@ type ConfirmTestOut struct {
 }
 
 func (t *Tools) confirmTest(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ConfirmTestOut, error) {
-	res, ok, err := confirm(ctx, req, "SGNL MCP test: approve this test question? Nothing happens either way.", "")
+	res, ok, err := confirm(ctx, req, "SGNL MCP test: approve this test question? Nothing happens either way.", "", "Yes, I approve this test")
 	if err != nil || res != nil {
 		return res, ConfirmTestOut{}, err
 	}

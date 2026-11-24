@@ -49,7 +49,7 @@ func TestConfirmAsksThePerson(t *testing.T) {
 			asked := 0
 			cs := confirmSession(t, v, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 				asked++
-				return &mcp.ElicitResult{Action: action}, nil
+				return &mcp.ElicitResult{Action: action, Content: map[string]any{"confirmed": true}}, nil
 			}, false)
 			r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
 			if err != nil || r.IsError || !strings.Contains(resultText(r), want) || asked != 1 {
@@ -68,14 +68,14 @@ func TestConfirmAsksThePerson(t *testing.T) {
 func TestConfirmRefusesForgedAnswers(t *testing.T) {
 	ctx := context.Background()
 	yes := func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-		return &mcp.ElicitResult{Action: "accept"}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
 	}
 	cs := confirmSession(t, "2026-07-28", yes, true)
 	first, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
 	if err != nil || !first.NeedsInput() || first.RequestState == "" {
 		t.Fatalf("first call should ask for input: %v %+v", err, first)
 	}
-	accept := mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept"}}
+	accept := mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}}
 	for name, state := range map[string]string{
 		"no state":      "",
 		"made up":       "9999999999.AAAA",
@@ -89,5 +89,35 @@ func TestConfirmRefusesForgedAnswers(t *testing.T) {
 	r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", InputResponses: accept, RequestState: first.RequestState})
 	if err != nil || r.IsError || !strings.Contains(resultText(r), "accepted") {
 		t.Errorf("genuine answer refused: %v %q", err, resultText(r))
+	}
+}
+
+// Some clients accept a question by themselves (an empty answer): without
+// the ticked box, an accept counts as a no.
+func TestConfirmNeedsTheBoxTicked(t *testing.T) {
+	ctx := context.Background()
+	for name, content := range map[string]map[string]any{"empty": nil, "unticked": {"confirmed": false}, "text": {"confirmed": "true"}} {
+		cs := confirmSession(t, "2026-07-28", func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			return &mcp.ElicitResult{Action: "accept", Content: content}, nil
+		}, false)
+		// The SDK client may already reject an answer that doesn't fit the
+		// form; either way it must not count as a yes.
+		r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
+		if err == nil && !strings.Contains(resultText(r), "declined") {
+			t.Errorf("%s accept: got %q", name, resultText(r))
+		}
+	}
+	// And at the gateway itself (a client that sends whatever it likes):
+	cs := confirmSession(t, "2026-07-28", func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	}, true)
+	first, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
+	if err != nil || !first.NeedsInput() {
+		t.Fatalf("expected a question: %v", err)
+	}
+	r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", RequestState: first.RequestState,
+		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}}})
+	if err != nil || !strings.Contains(resultText(r), "declined") {
+		t.Errorf("bare accept at the gateway: %v %q", err, resultText(r))
 	}
 }
