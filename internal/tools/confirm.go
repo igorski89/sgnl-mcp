@@ -39,11 +39,16 @@ const confirmTTL = 10 * time.Minute
 
 // confirmState binds an answer to this tool, these exact arguments and this
 // person, until a deadline: an accept can't be replayed for another action.
-func confirmState(tool string, args []byte, who, bind string, until int64) string {
+// again: this is the second asking (after an Accept without the box ticked).
+func confirmState(tool string, args []byte, who, bind string, until int64, again bool) string {
 	m := hmac.New(sha256.New, confirmKey)
-	fmt.Fprintf(m, "%s\x00%s\x00%d\x00%s\x00", tool, who, until, bind)
+	fmt.Fprintf(m, "%s\x00%s\x00%d\x00%t\x00%s\x00", tool, who, until, again, bind)
 	m.Write(canonical(args))
-	return strconv.FormatInt(until, 10) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+	mark := "1"
+	if again {
+		mark = "2"
+	}
+	return strconv.FormatInt(until, 10) + "." + mark + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
 // canonical: the arguments with keys sorted and spacing normalised, so a
@@ -72,7 +77,9 @@ func canonical(args []byte) []byte {
 // check: the label of a box the person must tick. Some clients answer a
 // bare Accept/Decline question by themselves (Codex in its permissive
 // modes accepts an empty form); an accept without the ticked box counts
-// as a no.
+// as a no. The first such accept asks once more, saying the box wasn't
+// ticked; the second ends with errNotTicked (never a loop, for clients
+// that keep accepting by themselves).
 func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind, check string) (res *mcp.CallToolResult, ok bool, err error) {
 	if req == nil || req.Session == nil || req.Params == nil {
 		return nil, false, errNoConfirm
@@ -84,20 +91,25 @@ func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind, check
 	if c, err := auth.Person(ctx); err == nil {
 		who = c.Username
 	}
-	if req.Params.InputResponses == nil {
+	ask := func(msg string, again bool) *mcp.CallToolResult {
 		until := time.Now().Add(confirmTTL).Unix()
 		return &mcp.CallToolResult{
 			InputRequests: mcp.InputRequestMap{"confirm": &mcp.ElicitParams{
-				Message: message,
+				Message: msg,
 				RequestedSchema: map[string]any{"type": "object", "required": []string{"confirmed"},
 					"properties": map[string]any{"confirmed": map[string]any{"type": "boolean", "title": check, "default": false}}},
 			}},
-			RequestState: confirmState(req.Params.Name, req.Params.Arguments, who, bind, until),
-		}, false, nil
+			RequestState: confirmState(req.Params.Name, req.Params.Arguments, who, bind, until, again),
+		}
 	}
-	ts, _, _ := strings.Cut(req.Params.RequestState, ".")
+	if req.Params.InputResponses == nil {
+		return ask(message, false), false, nil
+	}
+	ts, rest, _ := strings.Cut(req.Params.RequestState, ".")
+	mark, _, _ := strings.Cut(rest, ".")
+	again := mark == "2"
 	until, perr := strconv.ParseInt(ts, 10, 64)
-	want := confirmState(req.Params.Name, req.Params.Arguments, who, bind, until)
+	want := confirmState(req.Params.Name, req.Params.Arguments, who, bind, until, again)
 	if perr != nil || !hmac.Equal([]byte(want), []byte(req.Params.RequestState)) {
 		return nil, false, fmt.Errorf("the confirmation doesn't match this request, or what it shows has changed since: ask again")
 	}
@@ -105,10 +117,26 @@ func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind, check
 		return nil, false, fmt.Errorf("the confirmation expired: ask again")
 	}
 	r, _ := req.Params.InputResponses["confirm"].(*mcp.ElicitResult)
-	ok = r != nil && r.Action == "accept" && r.Content["confirmed"] == true
-	slog.Info("person answered", "tool", req.Params.Name, "user", who, "outcome", map[bool]string{true: "accepted", false: "declined"}[ok])
+	action, ticked := "none", false
+	if r != nil {
+		action, ticked = r.Action, r.Content["confirmed"] == true
+	}
+	ok = action == "accept" && ticked
+	outcome := map[bool]string{true: "accepted", false: "declined"}[ok]
+	if action == "accept" && !ticked {
+		outcome = "accepted without ticking the box"
+	}
+	slog.Info("person answered", "tool", req.Params.Name, "user", who, "action", action, "ticked", ticked, "again", again, "outcome", outcome)
+	if action == "accept" && !ticked {
+		if !again {
+			return ask("The box wasn't ticked, so nothing was done yet. Tick \""+check+"\" and press Accept to go ahead, or Decline.\n\n"+message, true), false, nil
+		}
+		return nil, false, errNotTicked
+	}
 	return nil, ok, nil
 }
+
+var errNotTicked = fmt.Errorf("not done: the person pressed Accept twice without ticking the box, which counts as a no. Nothing was changed; if they meant yes, call the tool again and they tick the box")
 
 // ---- confirm_test (experiment: SGNL_MCP_EXPERIMENTS=confirm)
 
