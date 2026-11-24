@@ -25,6 +25,8 @@ type fakeMail struct {
 	draft       map[string]any
 	known       map[string]bool // addresses already in Sent
 	submissions []map[string]any
+	updates     []map[string]any
+	list        []any // Email/get answer instead of the draft
 }
 
 func newFakeMail() *fakeMail {
@@ -59,12 +61,29 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 			var res any
 			switch name {
 			case "Mailbox/get":
-				res = map[string]any{"list": []map[string]any{{"id": "dr", "name": "Drafts", "role": "drafts"}, {"id": "se", "name": "Sent", "role": "sent"}}}
+				res = map[string]any{"list": []map[string]any{{"id": "dr", "name": "Drafts", "role": "drafts"}, {"id": "se", "name": "Sent", "role": "sent"},
+					{"id": "in", "name": "Inbox", "role": "inbox"}, {"id": "te", "name": "Test"}}}
 			case "Email/get":
-				res = map[string]any{"list": []any{f.draft}}
+				if f.list != nil {
+					res = map[string]any{"list": f.list}
+				} else {
+					res = map[string]any{"list": []any{f.draft}}
+				}
 			case "Identity/get":
 				res = map[string]any{"list": []map[string]any{{"id": "id1", "email": "igor@co.example"}}}
+			case "Email/set":
+				f.updates = append(f.updates, args)
+				up, _ := args["update"].(map[string]any)
+				upd := map[string]any{}
+				for k := range up {
+					upd[k] = nil
+				}
+				res = map[string]any{"updated": upd}
 			case "Email/query":
+				if args["filter"] == nil || f.list != nil {
+					res = map[string]any{"ids": []string{"d1"}}
+					break
+				}
 				b, _ := json.Marshal(args["filter"])
 				ids := []string{}
 				for a := range f.known {
@@ -222,5 +241,32 @@ func TestSendQuestionCantBeFaked(t *testing.T) {
 		if strings.HasPrefix(l, "To: only-colleague") || strings.HasPrefix(l, "WARNING: none") {
 			t.Errorf("mail text became its own line: %q", l)
 		}
+	}
+}
+
+// Search results say which folder each mail is in; moving mail to the
+// folder it is already in changes (and counts) nothing.
+func TestSearchFolderAndNoOpMove(t *testing.T) {
+	f := newFakeMail()
+	f.list = []any{
+		map[string]any{"id": "m1", "from": []map[string]any{{"email": "a@co.example"}}, "mailboxIds": map[string]bool{"te": true}},
+		map[string]any{"id": "m2", "from": []map[string]any{{"email": "a@co.example"}}, "mailboxIds": map[string]bool{"in": true}},
+	}
+	cs := sendSession(t, f, nil, false)
+	ctx := context.Background()
+	r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "mail_search", Arguments: map[string]any{"query": "x"}})
+	if err != nil || r.IsError {
+		t.Fatalf("search: %v %s", err, resultText(r))
+	}
+	if !strings.Contains(resultText(r), `"folder":"Test"`) || !strings.Contains(resultText(r), `"folder":"Inbox"`) {
+		t.Errorf("folders missing: %s", resultText(r))
+	}
+	r, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "mail_move", Arguments: map[string]any{"ids": []string{"m1", "m2"}, "folder": "Test"}})
+	if err != nil || r.IsError || !strings.Contains(resultText(r), `"changed":1`) {
+		t.Fatalf("move: %v %s", err, resultText(r))
+	}
+	up := f.updates[0]["update"].(map[string]any)
+	if _, ok := up["m1"]; ok || len(up) != 1 {
+		t.Errorf("moved mail already in Test: %v", up)
 	}
 }

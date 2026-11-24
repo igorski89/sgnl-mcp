@@ -115,6 +115,7 @@ type MailSummary struct {
 	Subject  string `json:"subject"`
 	Received string `json:"received"`
 	Unread   bool   `json:"unread,omitempty"`
+	Folder   string `json:"folder,omitempty"`
 	Preview  string `json:"preview"`
 }
 
@@ -130,6 +131,7 @@ type emailLite struct {
 	ReceivedAt string          `json:"receivedAt"`
 	Preview    string          `json:"preview"`
 	Keywords   map[string]bool `json:"keywords"`
+	MailboxIDs map[string]bool `json:"mailboxIds"`
 }
 
 func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct string, filter map[string]any, limit int) ([]MailSummary, error) {
@@ -138,7 +140,8 @@ func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct str
 			"sort": []any{map[string]any{"property": "receivedAt", "isAscending": false}}, "limit": limit}},
 		jmap.Call{Method: "Email/get", Args: map[string]any{"accountId": acct,
 			"#ids":       jmap.Ref(0, "Email/query", "/ids"),
-			"properties": []string{"id", "from", "subject", "receivedAt", "preview", "keywords"}}})
+			"properties": []string{"id", "from", "subject", "receivedAt", "preview", "keywords", "mailboxIds"}}},
+		jmap.Call{Method: "Mailbox/get", Args: map[string]any{"accountId": acct, "properties": []string{"id", "name"}}})
 	if err != nil {
 		return nil, err
 	}
@@ -146,10 +149,22 @@ func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct str
 	if err := json.Unmarshal(r[1], &got); err != nil {
 		return nil, err
 	}
+	var mbs struct{ List []mailbox }
+	_ = json.Unmarshal(r[2], &mbs)
+	names := map[string]string{}
+	for _, m := range mbs.List {
+		names[m.ID] = m.Name
+	}
 	out := []MailSummary{}
 	for _, e := range got.List {
 		t.sawMail(ctx, e.From)
-		out = append(out, MailSummary{e.ID, addrs(e.From), textx.Visible(e.Subject), e.ReceivedAt, !e.Keywords["$seen"], textx.Visible(e.Preview)})
+		var folders []string
+		for id := range e.MailboxIDs {
+			folders = append(folders, names[id])
+		}
+		slices.Sort(folders)
+		out = append(out, MailSummary{e.ID, addrs(e.From), textx.Visible(e.Subject), e.ReceivedAt, !e.Keywords["$seen"],
+			strings.Join(folders, ", "), textx.Visible(e.Preview)})
 	}
 	return out, nil
 }
@@ -786,7 +801,17 @@ func (t *Tools) mailMove(ctx context.Context, _ *mcp.CallToolRequest, in MailMov
 	if err := movable(got.List, draftsID); err != nil {
 		return nil, MailChangeOut{}, err
 	}
-	return t.updateEmails(ctx, in.IDs, func(string) map[string]any { return map[string]any{"mailboxIds": map[string]bool{mb.ID: true}} })
+	// Only mail not already (only) in that folder is moved and counted.
+	var ids []string
+	for _, e := range got.List {
+		if !(len(e.MailboxIDs) == 1 && e.MailboxIDs[mb.ID]) {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, MailChangeOut{Changed: 0}, nil
+	}
+	return t.updateEmails(ctx, ids, func(string) map[string]any { return map[string]any{"mailboxIds": map[string]bool{mb.ID: true}} })
 }
 
 // movable: drafts stay in Drafts. Moved out, an unsent draft would sit

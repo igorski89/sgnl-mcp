@@ -205,6 +205,11 @@ func extract(name, ctype string, data []byte, truncated bool) (string, error) {
 	return "", fmt.Errorf("can't read %s files yet (%s); text, Markdown, CSV, HTML, PDF and .docx work", ext, ctype)
 }
 
+var (
+	reHiddenRun = regexp.MustCompile(`(?s)<w:r\b[^>]*>(?:(?:[^<]|<[^/]|</[^w]|</w:[^r]|</w:r[^>])*?)<w:(?:vanish|specVanish)\b[^>]*/>.*?</w:r>`)
+	reVanishOff = regexp.MustCompile(`<w:(?:vanish|specVanish)\s+w:val="(?:false|0|off)"`)
+)
+
 func docx(data []byte) (string, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -223,7 +228,14 @@ func docx(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		s := strings.NewReplacer("</w:p>", "\n", "<w:tab/>", "\t", "<w:br/>", "\n").Replace(string(x))
+		// Runs marked hidden (w:vanish) aren't shown by Word: drop them.
+		s := reHiddenRun.ReplaceAllStringFunc(string(x), func(run string) string {
+			if reVanishOff.MatchString(run) {
+				return run
+			}
+			return ""
+		})
+		s = strings.NewReplacer("</w:p>", "\n", "<w:tab/>", "\t", "<w:br/>", "\n").Replace(s)
 		return strings.TrimSpace(HTML(s)), nil
 	}
 	return "", fmt.Errorf("not a valid .docx: no word/document.xml")
