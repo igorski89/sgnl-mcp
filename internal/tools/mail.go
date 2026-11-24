@@ -484,7 +484,7 @@ func (t *Tools) mailboxList(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 type DraftIn struct {
 	To        []string `json:"to,omitempty" jsonschema:"recipients (address or Name <address>); for a reply defaults to the sender"`
 	Cc        []string `json:"cc,omitempty"`
-	Bcc       []string `json:"bcc,omitempty" jsonschema:"hidden recipients (note: mail_send can't send drafts with Bcc yet)"`
+	Bcc       []string `json:"bcc,omitempty" jsonschema:"hidden recipients"`
 	Subject   string   `json:"subject,omitempty" jsonschema:"for a reply/forward defaults to Re:/Fwd: of the original"`
 	Body      string   `json:"body" jsonschema:"plain text"`
 	ReplyTo   string   `json:"reply_to,omitempty" jsonschema:"message id to reply to (quotes it, threads the reply)"`

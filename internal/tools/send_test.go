@@ -217,7 +217,6 @@ func TestSendRefusals(t *testing.T) {
 		"someone else's":   func(d map[string]any) { d["from"] = []map[string]any{{"email": "ceo@co.example"}} },
 		"foreign Reply-To": func(d map[string]any) { d["replyTo"] = []map[string]any{{"email": "x@evil.example"}} },
 		"no recipients":    func(d map[string]any) { d["to"], d["cc"] = nil, nil },
-		"Bcc":              func(d map[string]any) { d["bcc"] = []map[string]any{{"email": "b@co.example"}} },
 		"too many":         func(d map[string]any) { d["to"] = manyAddrs(maxRecipients + 1) },
 	} {
 		f := newFakeMail()
@@ -338,16 +337,15 @@ func TestSendRefusedForUntrustedClient(t *testing.T) {
 	}
 }
 
-// With the bcc experiment (verification only), a Bcc draft goes to the
-// person's confirmation, Bcc shown.
-func TestSendBccOnlyAsExperiment(t *testing.T) {
+// Bcc recipients are sent to, and shown to the person in the question.
+func TestSendBcc(t *testing.T) {
 	f := newFakeMail()
 	f.draft["bcc"] = []map[string]any{{"email": "b@co.example"}}
 	var asked string
-	cs := sendSessionWith(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+	cs := sendSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		asked = r.Params.Message
 		return &mcp.ElicitResult{Action: "accept"}, nil
-	}, false, func(tl *Tools) { tl.Experiments = map[string]bool{"bcc": true} })
+	}, false)
 	if r := send(t, cs); r.IsError || !strings.Contains(asked, "Bcc: b@co.example") || len(f.submissions) != 1 {
 		t.Fatalf("%q, asked %q", resultText(r), asked)
 	}

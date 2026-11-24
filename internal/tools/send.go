@@ -160,11 +160,8 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 		}
 	}
 
-	// Bcc: not yet verified that the mail server strips it from the copies
-	// it delivers (sgnl-01, 2026-11-24); until then, refused.
-	if len(e.Bcc) > 0 && !t.Experiments["bcc"] { // the experiment: for the verification send only
-		return nil, MailSendOut{}, fmt.Errorf("drafts with Bcc can't be sent through SGNL MCP yet: remove the Bcc recipients (mail_draft_update), or send it from your mail app")
-	}
+	// Bcc: the mail server delivers copies without the Bcc header
+	// (verified live 2026-11-25: an outside recipient's copy had none).
 
 	// Recipients, as the mail server will send them (from the headers).
 	type rcpt struct {
