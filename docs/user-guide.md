@@ -18,9 +18,30 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 
 ## Getting started
 
-1. Add the SGNL connection to your AI app. Your administrator gives you the address.
-2. Log in with your normal work account when the app asks.
-3. Try: *"Who am I logged in as?"* followed by *"What's on my plate today?"*
+You need to be switched on for SGNL MCP first: ask your administrator. They also tell you your company's values for the placeholders below (`<mcp address>` looks like `https://mcp.example.com/mcp`, `<name>` is a short name such as `sgnl-example`).
+
+### In Claude Code (the terminal app)
+
+1. Run this once in a terminal:
+
+   ```
+   claude mcp add --transport http --client-id sgnl-mcp-claude-code --callback-port 47621 <name> <mcp address>
+   ```
+
+2. Start Claude Code, type `/mcp`, pick `<name>` and choose **Authenticate**. Your browser opens your company's login page: log in as usual (with your second factor) and allow the access it asks for.
+3. Back in Claude Code, try *"Who am I logged in as?"* and then *"What's on my plate today?"*
+
+If Claude Code later says the connection needs a login, repeat step 2.
+
+### On claude.ai (the website)
+
+1. Go to **Settings → Connectors → Add custom connector**.
+2. Name: anything you like, for example your company's name. URL: `<mcp address>`.
+3. Open **Advanced settings** and enter the OAuth client ID `sgnl-mcp-claude-ai`. Leave the client secret empty.
+4. Click **Add**, then **Connect**, and log in on your company's login page.
+5. In a new chat, turn the connector on (the tools menu) and try *"What's on my plate today?"*
+
+Sending email and saving into shared spaces may not work on claude.ai yet: it depends on whether the site shows SGNL's confirmation dialog. If it can't, the assistant tells you it can't send; your draft is waiting in Drafts, so send it from your mail app.
 
 ## What you can ask
 
@@ -145,7 +166,8 @@ Sending and saving to shared spaces need an app that can show confirmations.
 
 | App | Reading and drafts | Sending and shared spaces |
 |---|---|---|
-| Claude Code | ✅ | ✅ |
+| Claude Code | ✅ | ✅ (tested) |
+| claude.ai (website) | ✅ | not yet known |
 | Cursor | ✅ | ✅ |
 | VS Code (Copilot) | ✅ | ✅ |
 | Codex CLI | ✅ | ✅, but switch off auto-approve modes |
