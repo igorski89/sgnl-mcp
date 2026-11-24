@@ -27,6 +27,8 @@ type fakeMail struct {
 	submissions []map[string]any
 	updates     []map[string]any
 	list        []any // Email/get answer instead of the draft
+	refuse      bool  // the server refuses the submission
+	moveFails   bool  // sent, but the move to Sent fails
 }
 
 func newFakeMail() *fakeMail {
@@ -94,7 +96,24 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 				res = map[string]any{"ids": ids}
 			case "EmailSubmission/set":
 				f.submissions = append(f.submissions, args)
+				if f.refuse {
+					res = map[string]any{"notCreated": map[string]any{"s": map[string]any{"type": "forbiddenToSend"}}}
+					// a real server may still answer the implicit update
+					out = append(out, []any{name, res, id}, []any{"Email/set", map[string]any{"updated": map[string]any{}}, id})
+					continue
+				}
 				res = map[string]any{"created": map[string]any{"s": map[string]any{"id": "sub1"}}}
+				// The implicit Email/set of onSuccessUpdateEmail follows under
+				// the same call id.
+				implicit := map[string]any{"updated": map[string]any{"d1": nil}}
+				if f.moveFails {
+					implicit = map[string]any{"notUpdated": map[string]any{"d1": map[string]any{"type": "serverFail"}}}
+				} else {
+					f.draft["keywords"] = map[string]bool{}
+					f.draft["mailboxIds"] = map[string]bool{"se": true}
+				}
+				out = append(out, []any{name, res, id}, []any{"Email/set", implicit, id})
+				continue
 			default:
 				t.Errorf("unexpected JMAP call %s", name)
 			}
@@ -268,5 +287,29 @@ func TestSearchFolderAndNoOpMove(t *testing.T) {
 	up := f.updates[0]["update"].(map[string]any)
 	if _, ok := up["m1"]; ok || len(up) != 1 {
 		t.Errorf("moved mail already in Test: %v", up)
+	}
+}
+
+// The outcome is read from the submission itself, not from the implicit
+// Drafts -> Sent update that follows it.
+func TestSendReportsTheRealOutcome(t *testing.T) {
+	yes := func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
+	}
+	f := newFakeMail()
+	f.refuse = true
+	if r := send(t, sendSession(t, f, yes, false)); !r.IsError || !strings.Contains(resultText(r), "didn't send") {
+		t.Errorf("refused submission reported as: %s", resultText(r))
+	}
+	f = newFakeMail()
+	f.moveFails = true
+	r := send(t, sendSession(t, f, yes, false))
+	if r.IsError || !strings.Contains(resultText(r), `"sent":true`) || !strings.Contains(resultText(r), "don't send it again") {
+		t.Errorf("sent but not moved reported as: %s", resultText(r))
+	}
+	f = newFakeMail()
+	r = send(t, sendSession(t, f, yes, false))
+	if r.IsError || !strings.Contains(resultText(r), "it is now in Sent") {
+		t.Errorf("normal send reported as: %s", resultText(r))
 	}
 }

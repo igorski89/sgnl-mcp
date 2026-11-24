@@ -197,12 +197,18 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 						map[string]any{"to": x.email}, map[string]any{"cc": x.email}, map[string]any{"bcc": x.email}}},
 				}}}}
 		}
-		if rr, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, calls...); err == nil {
-			for i := range rs {
-				var q struct{ IDs []string }
-				_ = json.Unmarshal(rr[i], &q)
-				rs[i].new_ = len(q.IDs) == 0
+		rr, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, calls...)
+		for i := range rs {
+			var q struct{ IDs []string }
+			if err != nil || rr[i] == nil || json.Unmarshal(rr[i], &q) != nil {
+				rs[i].new_ = true // unknown counts as new
+				continue
 			}
+			rs[i].new_ = len(q.IDs) == 0
+		}
+	} else {
+		for i := range rs {
+			rs[i].new_ = true
 		}
 	}
 
@@ -290,13 +296,31 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 		"create":               map[string]any{"s": map[string]any{"emailId": e.ID, "identityId": idn.ID}},
 		"onSuccessUpdateEmail": map[string]any{"#s": patch},
 	}})
+	var subm struct {
+		Created    map[string]struct{ ID string }                `json:"created"`
+		NotCreated map[string]struct{ Type, Description string } `json:"notCreated"`
+	}
 	if err == nil {
-		err = jmap.SetErrors(r[0])
+		if r[0] == nil {
+			err = fmt.Errorf("no answer to the submission")
+		} else {
+			_ = json.Unmarshal(r[0], &subm)
+			if n, bad := subm.NotCreated["s"]; bad {
+				err = fmt.Errorf("%s %s", n.Type, n.Description)
+			} else if subm.Created["s"].ID == "" {
+				err = fmt.Errorf("the submission wasn't confirmed")
+			}
+		}
 	}
 	if err != nil {
 		slog.Warn("mail not sent", "user", me.Username, "error", err.Error())
 		return nil, MailSendOut{}, fmt.Errorf("the mail server didn't send it: %v (the draft is still in Drafts)", err)
 	}
 	slog.Info("mail sent", "user", me.Username, "recipients", len(rs), "outside", outside, "new", fresh)
-	return nil, MailSendOut{true, len(rs), outside, "Sent with the person's confirmation; it is now in Sent."}, nil
+	note := "Sent with the person's confirmation; it is now in Sent."
+	// Sent for sure; whether it also moved to Sent is a separate step.
+	if after, err := t.getEmails(ctx, tok, s, acct, []string{e.ID}, 1); err == nil && len(after) == 1 && after[0].Keywords["$draft"] {
+		note = "Sent with the person's confirmation, but the mail is still shown in Drafts: don't send it again."
+	}
+	return nil, MailSendOut{true, len(rs), outside, note}, nil
 }

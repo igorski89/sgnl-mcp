@@ -157,7 +157,6 @@ func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct str
 	}
 	out := []MailSummary{}
 	for _, e := range got.List {
-		t.sawMail(ctx, e.From)
 		var folders []string
 		for id := range e.MailboxIDs {
 			folders = append(folders, names[id])

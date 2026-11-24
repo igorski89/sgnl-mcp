@@ -208,8 +208,11 @@ func (c *Client) Invoke(ctx context.Context, token string, s *Session, using []s
 		if name == "error" {
 			return nil, fmt.Errorf("mail server: %s", strings.TrimSpace(string(mr[1])))
 		}
+		// A call can be followed by implicit responses under the same id
+		// (EmailSubmission/set's onSuccessUpdateEmail adds an Email/set):
+		// each call gets its own method's response.
 		var i int
-		if _, err := fmt.Sscan(id, &i); err == nil && i >= 0 && i < len(out) {
+		if _, err := fmt.Sscan(id, &i); err == nil && i >= 0 && i < len(out) && name == calls[i].Method && out[i] == nil {
 			out[i] = mr[1]
 		}
 	}

@@ -47,9 +47,11 @@ var limitsPerMinute = map[string]struct {
 	perMin float64
 	burst  int
 }{
-	kindRead:    {120, 60},
-	kindWrite:   {30, 15},
-	kindOutward: {0.5, 10}, // 10 at once, then one every 2 minutes (30 an hour)
+	kindRead:  {120, 60},
+	kindWrite: {30, 15},
+	// Outward calls come in pairs (the question, then the answer): about
+	// 10 sends at once, then one every 2 minutes (30 an hour).
+	kindOutward: {1, 20},
 }
 
 type limiter struct {
