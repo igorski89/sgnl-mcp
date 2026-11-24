@@ -62,9 +62,9 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
 		Description: "Send a draft (from Drafts) as it is. The person is asked in their app first, with every recipient shown; nothing is sent without their yes. To change the mail, update the draft first."}, t.mailSend)
 	add(t, s, &mcp.Tool{Name: "mail_draft_create", Annotations: wr,
-		Description: "Write a new mail, a reply (reply_to, optionally reply_all) or a forward (forward_of) and save it in Drafts. It is NEVER sent: you review and send it from your mail app."}, t.mailDraftCreate)
+		Description: "Write a new mail, a reply (reply_to, optionally reply_all) or a forward (forward_of) and save it in Drafts. Nothing is sent: to send it, use mail_send (the person confirms) or the person sends it from their mail app."}, t.mailDraftCreate)
 	add(t, s, &mcp.Tool{Name: "mail_draft_update", Annotations: wr,
-		Description: "Change a draft (recipients, subject, text). Only messages in Drafts can be changed; still never sent."}, t.mailDraftUpdate)
+		Description: "Change a draft (recipients, subject, text). Only messages in Drafts can be changed; nothing is sent."}, t.mailDraftUpdate)
 	add(t, s, &mcp.Tool{Name: "mail_flag", Annotations: wr,
 		Description: "Mark messages read/unread and/or starred/unstarred."}, t.mailFlag)
 	add(t, s, &mcp.Tool{Name: "mail_move", Annotations: wr,

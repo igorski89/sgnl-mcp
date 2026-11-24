@@ -498,7 +498,7 @@ type DraftOut struct {
 	Note    string `json:"note"`
 }
 
-const draftNote = "Saved in Drafts. Nothing was sent: the person reviews and sends it from their mail app."
+const draftNote = "Saved in Drafts. Nothing was sent: mail_send sends it after the person confirms, or they send it from their mail app."
 
 func (t *Tools) mailDraftCreate(ctx context.Context, _ *mcp.CallToolRequest, in DraftIn) (*mcp.CallToolResult, DraftOut, error) {
 	tok, s, acct, err := t.mailSession(ctx)
