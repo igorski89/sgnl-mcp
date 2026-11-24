@@ -36,7 +36,7 @@ func (t *Tools) fileSearch(ctx context.Context, _ *mcp.CallToolRequest, in FileS
 	if in.Limit < 1 || in.Limit > 50 {
 		in.Limit = 20
 	}
-	tok, err := t.Auth.SameIdentityToken(ctx)
+	tok, err := t.Auth.FilesToken(ctx)
 	if err != nil {
 		return nil, FileListOut{}, err
 	}
@@ -62,7 +62,7 @@ type FileReadOut struct {
 }
 
 func (t *Tools) fileRead(ctx context.Context, _ *mcp.CallToolRequest, in FileReadIn) (*mcp.CallToolResult, FileReadOut, error) {
-	tok, err := t.Auth.SameIdentityToken(ctx)
+	tok, err := t.Auth.FilesToken(ctx)
 	if err != nil {
 		return nil, FileReadOut{}, err
 	}
@@ -94,7 +94,7 @@ type FolderListOut struct {
 }
 
 func (t *Tools) folderList(ctx context.Context, _ *mcp.CallToolRequest, in FolderListIn) (*mcp.CallToolResult, FolderListOut, error) {
-	tok, err := t.Auth.SameIdentityToken(ctx)
+	tok, err := t.Auth.FilesToken(ctx)
 	if err != nil {
 		return nil, FolderListOut{}, err
 	}
@@ -142,7 +142,7 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 	if len(in.Content) > 2<<20 {
 		return nil, FileSaveOut{}, fmt.Errorf("content: at most 2 MB")
 	}
-	tok, err := t.Auth.SameIdentityToken(ctx)
+	tok, err := t.Auth.FilesToken(ctx)
 	if err != nil {
 		return nil, FileSaveOut{}, err
 	}

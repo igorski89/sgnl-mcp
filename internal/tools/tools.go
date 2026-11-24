@@ -16,8 +16,8 @@ import (
 // Tokens: how tools get a token for an app on the person's behalf
 // (*auth.Gateway; a fake in tests).
 type Tokens interface {
-	AppToken(ctx context.Context) (string, error)
-	SameIdentityToken(ctx context.Context) (string, error)
+	MailToken(ctx context.Context) (string, error)
+	FilesToken(ctx context.Context) (string, error)
 }
 
 type Tools struct {
@@ -92,6 +92,10 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "List a folder's contents; without a path: your spaces (personal and project spaces) to start from."}, t.folderList)
 		add(t, s, &mcp.Tool{Name: "file_save", Annotations: wr,
 			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file. In the personal space it is private; in a shared (project) space the person is asked to confirm first, because others will see it."}, t.fileSave)
+	}
+	if t.Experiments["audcheck"] {
+		add(t, s, &mcp.Tool{Name: "aud_check", Annotations: ro,
+			Description: "Test only: checks that the mail server and the file server each refuse tokens meant for something else. Reports HTTP statuses, changes nothing."}, t.audCheck)
 	}
 	if t.Experiments["confirm"] {
 		add(t, s, &mcp.Tool{Name: "confirm_test", Annotations: ro,

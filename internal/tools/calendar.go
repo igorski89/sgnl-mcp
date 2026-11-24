@@ -39,7 +39,7 @@ type EventListOut struct {
 }
 
 func (t *Tools) calSession(ctx context.Context) (string, *jmap.Session, string, error) {
-	tok, err := t.Auth.AppToken(ctx)
+	tok, err := t.Auth.MailToken(ctx)
 	if err != nil {
 		return "", nil, "", err
 	}
@@ -318,7 +318,7 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if !to.After(from) || to.Sub(from) > 31*24*time.Hour {
 		return nil, AvailabilityOut{}, fmt.Errorf("range: at most 31 days")
 	}
-	tok, err := t.Auth.AppToken(ctx)
+	tok, err := t.Auth.MailToken(ctx)
 	if err != nil {
 		return nil, AvailabilityOut{}, err
 	}

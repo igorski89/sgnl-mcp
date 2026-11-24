@@ -43,7 +43,7 @@ func (t *Tools) dayOverview(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 		out.Errors = append(out.Errors, "mail: "+err.Error())
 	}
 	if t.Files != nil {
-		if tok, err := t.Auth.SameIdentityToken(ctx); err == nil {
+		if tok, err := t.Auth.FilesToken(ctx); err == nil {
 			if fs, err := t.Files.SearchKQL(ctx, tok, "mtime:today", 15); err == nil {
 				out.Files = fs
 			} else {

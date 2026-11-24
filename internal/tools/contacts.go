@@ -35,7 +35,7 @@ func (t *Tools) contactSearch(ctx context.Context, _ *mcp.CallToolRequest, in Co
 	if in.Limit < 1 || in.Limit > 50 {
 		in.Limit = 10
 	}
-	tok, err := t.Auth.AppToken(ctx)
+	tok, err := t.Auth.MailToken(ctx)
 	if err != nil {
 		return nil, ContactSearchOut{}, err
 	}

@@ -54,7 +54,7 @@ func toAddrs(list []string) []address {
 
 // mailSession: an app token, the JMAP session and the mail account.
 func (t *Tools) mailSession(ctx context.Context) (string, *jmap.Session, string, error) {
-	tok, err := t.Auth.AppToken(ctx)
+	tok, err := t.Auth.MailToken(ctx)
 	if err != nil {
 		return "", nil, "", err
 	}

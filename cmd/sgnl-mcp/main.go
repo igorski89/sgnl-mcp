@@ -13,13 +13,17 @@
 //	SGNL_MCP_CLIENT_SECRET  its secret (token exchange)
 //	SGNL_MCP_JMAP_URL       JMAP session URL, e.g. https://mail.example.com/jmap/session
 //	SGNL_MCP_OPENCLOUD_URL  OpenCloud base URL, e.g. https://drive.example.com (unset: no file tools)
+//	SGNL_MCP_MAIL_AUDIENCE  the mail server's client id at the issuer: app tokens for JMAP
+//	                        are asked for with this audience (unset: the issuer's default)
+//	SGNL_MCP_FILES_AUDIENCE the same for OpenCloud
 //	SGNL_MCP_TZ             the instance's time zone (IANA, default UTC): "today", new events
-//	SGNL_MCP_EXPERIMENTS    comma-separated experiments to switch on (confirm)
+//	SGNL_MCP_EXPERIMENTS    comma-separated experiments to switch on (confirm, audcheck)
 //	SGNL_MCP_ALLOW_USERS    who may use it: usernames or email addresses, comma-separated
 //	SGNL_MCP_ALLOW_GROUPS   ... or members of any of these groups; with neither (and not
 //	                        SGNL_MCP_ALLOW_ALL=1) it refuses to start unless on loopback
 //	SGNL_MCP_INTERNAL_DOMAINS  the company's mail domains (default: each person's own);
 //	                        other recipients are marked "outside" when sending
+//	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
 //	SGNL_MCP_LOG            json: logs as JSON lines (for log collectors)
 //	SGNL_MCP_DEBUG          set: also log each token exchange (claims, never tokens);
 //	                        refused unless listening on loopback
@@ -112,7 +116,8 @@ func main() {
 	}
 	clientID := env("SGNL_MCP_CLIENT_ID", "sgnl-mcp")
 	cfg := auth.Config{Issuer: env("SGNL_MCP_ISSUER", ""), Audiences: []string{clientID, public}, ClientID: clientID,
-		ClientSecret: env("SGNL_MCP_CLIENT_SECRET", "")}
+		ClientSecret: env("SGNL_MCP_CLIENT_SECRET", ""),
+		MailAudience: os.Getenv("SGNL_MCP_MAIL_AUDIENCE"), FilesAudience: os.Getenv("SGNL_MCP_FILES_AUDIENCE")}
 	jmapURL := env("SGNL_MCP_JMAP_URL", "")
 
 	pu, err := url.Parse(public)
@@ -151,6 +156,10 @@ func main() {
 		// then get a refresh token from issuers that require it (Authelia).
 		// The exchange itself never asks for it.
 		ScopesSupported: append(strings.Fields(auth.ExchangeScope), "offline_access"), BearerMethodsSupported: []string{"header"}})
+	idle, err := time.ParseDuration(env("SGNL_MCP_SESSION_IDLE", "1h"))
+	if err != nil || idle <= 0 {
+		log.Fatalf("SGNL_MCP_SESSION_IDLE: a duration like 1h or 2m, got %q", os.Getenv("SGNL_MCP_SESSION_IDLE"))
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/oauth-protected-resource", prm)
 	mux.Handle(prmPath, prm)
@@ -159,7 +168,7 @@ func main() {
 		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s },
 			// Idle sessions are closed (clients open a new one), so a long-running
 			// host doesn't keep every session it ever saw.
-			&mcp.StreamableHTTPOptions{SessionTimeout: time.Hour})))
+			&mcp.StreamableHTTPOptions{SessionTimeout: idle})))
 
 	slog.Info("sgnl-mcp", "version", version, "label", label, "endpoint", public, "listen", addr, "issuer", cfg.Issuer,
 		"allow_all", access.All, "allow_users", len(access.Users), "allow_groups", access.Groups)

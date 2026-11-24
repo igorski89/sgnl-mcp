@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,10 +25,18 @@ func jwt(c Claims) string {
 
 // fakeIssuer: a token endpoint that exchanges any subject token except
 // those revoked, counting exchanges.
+var asked = struct {
+	sync.Mutex
+	aud []string
+}{}
+
 func fakeIssuer(t *testing.T) (g *Gateway, n *atomic.Int32, revoke func(string)) {
 	n = new(atomic.Int32)
 	var mu sync.Mutex
 	revoked := map[string]bool{}
+	asked.Lock()
+	asked.aud = nil
+	asked.Unlock()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		time.Sleep(20 * time.Millisecond)
@@ -42,6 +51,13 @@ func fakeIssuer(t *testing.T) (g *Gateway, n *atomic.Int32, revoke func(string))
 		n.Add(1)
 		sub := PeekClaims(r.Form.Get("subject_token"))
 		sub.ClientID, sub.Azp, sub.Exp = "gw", "", time.Now().Add(5*time.Minute).Unix()
+		sub.Aud = Audience{"issuer"}
+		if a := r.Form.Get("audience"); a != "" {
+			sub.Aud = Audience{a}
+		}
+		asked.Lock()
+		asked.aud = append(asked.aud, r.Form.Get("audience"))
+		asked.Unlock()
 		fmt.Fprintf(w, `{"access_token":%q}`, jwt(sub))
 	}))
 	t.Cleanup(srv.Close)
@@ -67,7 +83,7 @@ func TestAppTokenPerLoginToken(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := g.SameIdentityToken(as(a)); err != nil {
+			if _, err := g.FilesToken(as(a)); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -76,11 +92,11 @@ func TestAppTokenPerLoginToken(t *testing.T) {
 	if n.Load() != 1 {
 		t.Fatalf("concurrent calls with one login token: %d exchanges, want 1", n.Load())
 	}
-	if _, err := g.AppToken(as(b)); err != nil || n.Load() != 2 {
+	if _, err := g.MailToken(as(b)); err != nil || n.Load() != 2 {
 		t.Fatalf("another login token of the same person must be exchanged itself: %v, %d", err, n.Load())
 	}
 	g.now = func() time.Time { return time.Now().Add(5 * time.Minute) }
-	if _, err := g.AppToken(as(a)); err != nil || n.Load() != 3 {
+	if _, err := g.MailToken(as(a)); err != nil || n.Load() != 3 {
 		t.Fatalf("an expiring app token should be replaced: %v, %d", err, n.Load())
 	}
 }
@@ -114,7 +130,7 @@ func TestRevokedLoginTokenIs401(t *testing.T) {
 	if c := w.Header().Get("WWW-Authenticate"); !strings.Contains(c, `error="invalid_token"`) || !strings.Contains(c, "resource_metadata=") {
 		t.Fatalf("challenge: %q", c)
 	}
-	if _, err := g.AppToken(as(old)); !errors.Is(err, ErrAppTokenRefused) {
+	if _, err := g.MailToken(as(old)); !errors.Is(err, ErrAppTokenRefused) {
 		t.Fatalf("a tool with the revoked login: %v", err)
 	}
 	r := httptest.NewRequest("POST", "/mcp", nil)
@@ -122,5 +138,33 @@ func TestRevokedLoginTokenIs401(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if c := w.Header().Get("WWW-Authenticate"); w.Code != 401 || strings.Contains(c, "error=") {
 		t.Fatalf("no token at all: %d %q (no error code, RFC 6750 §3.1)", w.Code, c)
+	}
+}
+
+// Mail and files each get a token for their own audience; the login check
+// asks for none (an app's policy mustn't turn into a 401 for the login).
+func TestPerAppAudience(t *testing.T) {
+	g, n, _ := fakeIssuer(t)
+	g.cfg.MailAudience, g.cfg.FilesAudience = "stalwart", "opencloud"
+	tok := login(1)
+	verifier := func(ctx context.Context, tok string, _ *http.Request) (*mcpauth.TokenInfo, error) {
+		return g.verified(ctx, tok, PeekClaims(tok), time.Now().Add(time.Minute))
+	}
+	if _, err := verifier(context.Background(), tok, nil); err != nil {
+		t.Fatal(err)
+	}
+	m, err := g.MailToken(as(tok))
+	if err != nil || !slices.Equal(PeekClaims(m).Aud, Audience{"stalwart"}) {
+		t.Fatalf("mail: %v %v", err, PeekClaims(m).Aud)
+	}
+	f, err := g.FilesToken(as(tok))
+	if err != nil || !slices.Equal(PeekClaims(f).Aud, Audience{"opencloud"}) {
+		t.Fatalf("files: %v %v", err, PeekClaims(f).Aud)
+	}
+	g.MailToken(as(tok))
+	asked.Lock()
+	defer asked.Unlock()
+	if n.Load() != 3 || !slices.Equal(asked.aud, []string{"", "stalwart", "opencloud"}) {
+		t.Fatalf("%d exchanges, audiences %q", n.Load(), asked.aud)
 	}
 }

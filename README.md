@@ -50,8 +50,14 @@ needs your click, staying safe).
   holds no master credentials. The exchange happens when a request arrives:
   if the login server refuses the login (revoked, rotated out, logged out),
   the client gets 401 `invalid_token` and refreshes. The app token is kept in
-  memory for that one login token (never another of the same person) until
-  30 s before either expires; concurrent calls share one exchange.
+  memory for that one login token (never another of the same person) and
+  app until 30 s before either expires; concurrent calls share one exchange.
+  With `SGNL_MCP_MAIL_AUDIENCE` / `SGNL_MCP_FILES_AUDIENCE` set, each app
+  gets a token for its own audience, so an app that checks `aud` refuses a
+  token meant for the other (the `aud_check` experiment shows it).
+- **Key set:** the issuer's signing keys are fetched at most once a minute,
+  so junk tokens can't make the gateway hammer the login server; only
+  public-key algorithms are accepted.
 - **Narrow writes:** the JMAP client allows only the methods the tools need
   (no destroy except replacing a verified draft; mail submission only from
   `mail_send`); the OpenCloud client only reads and creates new files.

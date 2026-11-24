@@ -99,6 +99,11 @@ type Config struct {
 	Audiences    []string
 	ClientID     string // the gateway's client, for the exchange
 	ClientSecret string
+	// Per-app audiences asked for in the exchange (the apps' client ids at
+	// the issuer), so a token for one app is refused by the other. Empty:
+	// the issuer's default audience.
+	MailAudience  string // JMAP (mail, calendar, contacts)
+	FilesAudience string // OpenCloud
 }
 
 type Gateway struct {
@@ -127,6 +132,9 @@ type appTok struct {
 // reuseMargin: an app token is reused until this long before it expires.
 const reuseMargin = 30 * time.Second
 
+// jwksEvery: the issuer's key set is fetched at most this often.
+const jwksEvery = time.Minute
+
 // expiryMargin: a login token this close to expiry is refused (401), so the
 // client refreshes it before the gateway exchanges it.
 //
@@ -141,9 +149,22 @@ func New(ctx context.Context, cfg Config) (*Gateway, error) {
 	if err != nil {
 		return nil, err
 	}
+	var meta struct {
+		JWKS string   `json:"jwks_uri"`
+		Algs []string `json:"id_token_signing_alg_values_supported"`
+	}
+	if err := p.Claims(&meta); err != nil || meta.JWKS == "" {
+		return nil, fmt.Errorf("the issuer's discovery has no jwks_uri: %v", err)
+	}
+	// Public-key algorithms only (as go-oidc's own provider does): never
+	// HS* (a shared-secret "signature" anyone with the key set could forge).
+	algs := slices.DeleteFunc(meta.Algs, func(a string) bool { return !strings.HasPrefix(a, "RS") && !strings.HasPrefix(a, "ES") && !strings.HasPrefix(a, "PS") && a != "EdDSA" })
+	keys := &http.Client{Timeout: 15 * time.Second, Transport: &jwksCooldown{next: http.DefaultTransport,
+		url: meta.JWKS, every: jwksEvery, now: time.Now}}
+	ks := oidc.NewRemoteKeySet(oidc.ClientContext(context.WithoutCancel(ctx), keys), meta.JWKS)
 	return &Gateway{cfg: cfg, tokenURL: p.Endpoint().TokenURL, http: &http.Client{Timeout: 15 * time.Second},
 		cache: map[string]appTok{}, now: time.Now,
-		verifier: p.Verifier(&oidc.Config{SkipClientIDCheck: true,
+		verifier: oidc.NewVerifier(cfg.Issuer, ks, &oidc.Config{SkipClientIDCheck: true, SupportedSigningAlgs: algs,
 			Now: func() time.Time { return time.Now().Add(expiryMargin) }})}, nil
 }
 
@@ -184,7 +205,9 @@ func (g *Gateway) verified(ctx context.Context, tok string, c Claims, exp time.T
 // A refusal by the issuer is a 401; any other failure (issuer down,
 // configuration) lets the request through, and the tool reports it.
 func (g *Gateway) admit(ctx context.Context, p person) error {
-	_, _, err := g.appTokenFor(ctx, p)
+	// Checked without an app audience: whether the login is still valid,
+	// not whether one app's access policy lets the person in.
+	_, _, err := g.appTokenFor(ctx, p, "")
 	if errors.Is(err, ErrAppTokenRefused) {
 		slog.Info("token refused", "reason", "the login server refused to exchange it", "claims", p.claims)
 		return fmt.Errorf("%w: the login server no longer accepts this login", mcpauth.ErrInvalidToken)
@@ -241,20 +264,20 @@ func from(ctx context.Context) (person, error) {
 // replaced); if it persists, the login was ended at the issuer.
 var ErrAppTokenRefused = errors.New("the SGNL login server refused access to this app just now: try again. If it keeps failing, log in again (in Claude Code: /mcp, then Authenticate)")
 
-// AppToken trades the caller's token for a short-lived one issued to the
-// gateway, reused for the same login token until shortly before either
-// expires.
-func (g *Gateway) AppToken(ctx context.Context) (string, error) {
-	tok, _, err := g.appToken(ctx)
+// MailToken trades the caller's token for a short-lived one for the mail
+// server (JMAP), reused for the same login token until shortly before
+// either expires.
+func (g *Gateway) MailToken(ctx context.Context) (string, error) {
+	tok, _, err := g.appToken(ctx, g.cfg.MailAudience)
 	return tok, err
 }
 
-// SameIdentityToken: an app token whose identity claims (username, name,
-// email, groups) equal the person's. For apps that update the account
-// (and its role) from the token they get, e.g. OpenCloud's autoprovisioning
-// and role assignment: a token that differs is refused, never sent.
-func (g *Gateway) SameIdentityToken(ctx context.Context) (string, error) {
-	tok, c, err := g.appToken(ctx)
+// FilesToken: the same for OpenCloud, and only if its identity claims
+// (username, name, email, groups) equal the person's: OpenCloud updates
+// the account (and its role) from the token it gets, so a token that
+// differs is refused, never sent.
+func (g *Gateway) FilesToken(ctx context.Context) (string, error) {
+	tok, c, err := g.appToken(ctx, g.cfg.FilesAudience)
 	if err != nil {
 		return "", err
 	}
@@ -299,20 +322,20 @@ func loginEnded(code, desc string) bool {
 	return desc == "Invalid token"
 }
 
-func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
+func (g *Gateway) appToken(ctx context.Context, aud string) (string, Claims, error) {
 	p, err := from(ctx)
 	if err != nil {
 		return "", Claims{}, err
 	}
-	return g.appTokenFor(ctx, p)
+	return g.appTokenFor(ctx, p, aud)
 }
 
-func (g *Gateway) appTokenFor(ctx context.Context, p person) (string, Claims, error) {
+func (g *Gateway) appTokenFor(ctx context.Context, p person, aud string) (string, Claims, error) {
 	if p.token == "" {
 		return "", Claims{}, errors.New("not logged in")
 	}
 	sum := sha256.Sum256([]byte(p.token))
-	key := hex.EncodeToString(sum[:])
+	key := hex.EncodeToString(sum[:]) + "\x00" + aud
 	g.mu.Lock()
 	a, ok := g.cache[key]
 	g.mu.Unlock()
@@ -320,9 +343,12 @@ func (g *Gateway) appTokenFor(ctx context.Context, p person) (string, Claims, er
 		return a.tok, a.c, nil
 	}
 	v, err, _ := g.flight.Do(key, func() (any, error) {
-		tok, c, err := g.exchange(ctx, p)
+		tok, c, err := g.exchange(ctx, p, aud)
 		if err != nil {
 			return nil, err
+		}
+		if aud != "" && !slices.Contains(c.Aud, aud) {
+			return nil, fmt.Errorf("the app token's audience is %v, not %s", c.Aud, aud)
 		}
 		exp := min(c.Exp, p.claims.Exp)
 		if exp == 0 {
@@ -346,7 +372,7 @@ func (g *Gateway) appTokenFor(ctx context.Context, p person) (string, Claims, er
 	return a.tok, a.c, nil
 }
 
-func (g *Gateway) exchange(ctx context.Context, p person) (string, Claims, error) {
+func (g *Gateway) exchange(ctx context.Context, p person, aud string) (string, Claims, error) {
 	f := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"client_id":            {g.cfg.ClientID},
@@ -359,6 +385,9 @@ func (g *Gateway) exchange(ctx context.Context, p person) (string, Claims, error
 		// that release claims by scope (Authelia) leave the identity
 		// claims out of the new token without them.
 		"scope": {ExchangeScope},
+	}
+	if aud != "" {
+		f.Set("audience", aud)
 	}
 	req, _ := http.NewRequestWithContext(ctx, "POST", g.tokenURL, strings.NewReader(f.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
