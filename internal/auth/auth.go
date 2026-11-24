@@ -16,10 +16,12 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
+	"golang.org/x/sync/singleflight"
 )
 
 // Claims: what the gateway reads from a token (and logs; never the token).
@@ -102,7 +104,29 @@ type Gateway struct {
 	verifier *oidc.IDTokenVerifier
 	tokenURL string
 	http     *http.Client
+
+	// App tokens, per person and login client, reused until shortly before
+	// they expire: clients refresh their login often and run tool calls in
+	// parallel, and an issuer may refuse a just-replaced login (Authelia
+	// revokes the old access token when the refresh token rotates).
+	flight singleflight.Group
+	mu     sync.Mutex
+	cache  map[string]appTok
+	now    func() time.Time
 }
+
+type appTok struct {
+	tok   string
+	c     Claims
+	until time.Time
+}
+
+// reuseMargin: an app token is reused until this long before it expires.
+const reuseMargin = 30 * time.Second
+
+// expiryMargin: a login token this close to expiry is refused (401), so the
+// client refreshes it before the gateway exchanges it.
+const expiryMargin = 10 * time.Second
 
 func New(ctx context.Context, cfg Config) (*Gateway, error) {
 	p, err := oidc.NewProvider(ctx, cfg.Issuer)
@@ -110,7 +134,9 @@ func New(ctx context.Context, cfg Config) (*Gateway, error) {
 		return nil, err
 	}
 	return &Gateway{cfg: cfg, tokenURL: p.Endpoint().TokenURL, http: &http.Client{Timeout: 15 * time.Second},
-		verifier: p.Verifier(&oidc.Config{SkipClientIDCheck: true})}, nil
+		cache: map[string]appTok{}, now: time.Now,
+		verifier: p.Verifier(&oidc.Config{SkipClientIDCheck: true,
+			Now: func() time.Time { return time.Now().Add(expiryMargin) }})}, nil
 }
 
 type ctxKey struct{}
@@ -179,12 +205,13 @@ func from(ctx context.Context) (person, error) {
 	return p, nil
 }
 
-// ErrLoginExpired: the issuer no longer accepts the person's login; they
-// must log in again (in Claude Code: /mcp, Authenticate).
-var ErrLoginExpired = errors.New("your SGNL login has expired or was ended: log in again (in Claude Code: /mcp, then Authenticate)")
+// ErrAppTokenRefused: the issuer refused to trade the person's (verified)
+// login for an app token. Usually passing (a login the client just
+// replaced); if it persists, the login was ended at the issuer.
+var ErrAppTokenRefused = errors.New("the SGNL login server refused access to this app just now: try again. If it keeps failing, log in again (in Claude Code: /mcp, then Authenticate)")
 
 // AppToken trades the caller's token for a short-lived one issued to the
-// gateway (never cached: one per call).
+// gateway, reused for the same person until shortly before it expires.
 func (g *Gateway) AppToken(ctx context.Context) (string, error) {
 	tok, _, err := g.appToken(ctx)
 	return tok, err
@@ -226,7 +253,8 @@ func identityDiff(a, b Claims) string {
 const ExchangeScope = "openid profile email groups"
 
 // loginEnded: the issuer refused the person's login itself (expired,
-// revoked, logged out), as opposed to a configuration mistake.
+// revoked, logged out, or just replaced by a refresh), as opposed to a
+// configuration mistake.
 // Keycloak: invalid_token / "Invalid token". Authelia follows RFC 8693
 // §2.2.2: invalid_request ending in "Token is not valid or has expired.".
 func loginEnded(code, desc string) bool {
@@ -244,6 +272,54 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 	if err != nil {
 		return "", Claims{}, err
 	}
+	if p.claims.Sub == "" {
+		return "", Claims{}, errors.New("not logged in")
+	}
+	// Keyed on the identity too: a changed name or group gets a new token.
+	id, _ := json.Marshal([]any{p.claims.Sub, p.claims.Client(), p.claims.Username, p.claims.Email,
+		p.claims.Name, slices.Sorted(slices.Values(p.claims.Groups))})
+	key := string(id)
+	g.mu.Lock()
+	a, ok := g.cache[key]
+	g.mu.Unlock()
+	if ok && g.now().Before(a.until) {
+		return a.tok, a.c, nil
+	}
+	v, err, _ := g.flight.Do(key, func() (any, error) {
+		tok, c, err := g.exchange(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		a := appTok{tok, c, time.Unix(c.Exp, 0).Add(-reuseMargin)}
+		g.mu.Lock()
+		for k, old := range g.cache { // drop expired entries
+			if !g.now().Before(old.until) {
+				delete(g.cache, k)
+			}
+		}
+		g.cache[key] = a
+		g.mu.Unlock()
+		return a, nil
+	})
+	if errors.Is(err, ErrAppTokenRefused) {
+		// The shared exchange may have run with another (older) login of
+		// this person; try once more with this call's own.
+		tok, c, err := g.exchange(ctx, p)
+		if err == nil {
+			g.mu.Lock()
+			g.cache[key] = appTok{tok, c, time.Unix(c.Exp, 0).Add(-reuseMargin)}
+			g.mu.Unlock()
+		}
+		return tok, c, err
+	}
+	if err != nil {
+		return "", Claims{}, err
+	}
+	a = v.(appTok)
+	return a.tok, a.c, nil
+}
+
+func (g *Gateway) exchange(ctx context.Context, p person) (string, Claims, error) {
 	f := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"client_id":            {g.cfg.ClientID},
@@ -274,7 +350,7 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 	if resp.StatusCode != 200 || r.AccessToken == "" {
 		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "subject", p.claims)
 		if loginEnded(r.Error, r.Desc) {
-			return "", Claims{}, ErrLoginExpired
+			return "", Claims{}, ErrAppTokenRefused
 		}
 		return "", Claims{}, fmt.Errorf("token exchange: %d %s %s", resp.StatusCode, r.Error, r.Desc)
 	}

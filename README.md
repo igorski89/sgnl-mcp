@@ -42,19 +42,24 @@ needs your click, staying safe).
 - **Login:** the gateway is an OAuth 2.1 resource server. It publishes
   Protected Resource Metadata (RFC 9728) naming the instance's login server;
   MCP clients log the person in there. It accepts only tokens from that
-  issuer whose audience names the gateway (`SGNL_MCP_CLIENT_ID`).
-- **No token passthrough:** for every call it trades the person's token for
-  a short-lived one of its own (RFC 8693 token exchange) and calls the app
-  with that. The apps see the person, with their own permissions; the
-  gateway holds no master credentials.
-- **Read-only:** the JMAP client can only send get/query methods; the
-  OpenCloud client only GET, PROPFIND and REPORT.
+  issuer whose audience names the gateway (`SGNL_MCP_CLIENT_ID`, or its
+  public URL as an RFC 8707 resource indicator), with at least 10 s left.
+- **No token passthrough:** the gateway trades the person's token for a
+  short-lived one of its own (RFC 8693 token exchange) and calls the app with
+  that. The apps see the person, with their own permissions; the gateway
+  holds no master credentials. The app token is kept in memory and reused
+  for that person until 30 s before it expires; concurrent calls share one
+  exchange.
+- **Narrow writes:** the JMAP client allows only the methods the tools need
+  (no destroy except replacing a verified draft; mail submission only from
+  `mail_send`); the OpenCloud client only reads and creates new files.
 - **Identity check:** apps that update the account (and its role) from the
   token they get (OpenCloud) are only called when the gateway's token
   carries exactly the person's username, name, email and groups.
 - **Untrusted content:** mail and file content is written by others. The
-  tools and server instructions say so; nothing in this version can send,
-  share or delete.
+  tools and server instructions say so, hidden text is removed, and anything
+  that leaves the person's own space (sending, saving to a shared space) needs
+  their confirmation in the client.
 - **Naming:** each instance is shown as `SGNL - <instance>`
   (`SGNL_MCP_LABEL`), so people with several SGNL connections don't mix
   them up.
