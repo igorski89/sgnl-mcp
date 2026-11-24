@@ -278,7 +278,7 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 	for _, x := range rs {
 		bind += "|" + x.field + ":" + x.email
 	}
-	res, ok, err := confirm(ctx, req, b.String(), bind, fmt.Sprintf("Yes, send this email to %d recipient(s)", len(rs)))
+	res, ok, err := confirm(ctx, req, b.String(), bind)
 	if err != nil || res != nil {
 		return res, MailSendOut{}, err
 	}

@@ -159,7 +159,7 @@ func TestSendOnlyWithThePersonsYes(t *testing.T) {
 	var asked string
 	cs := sendSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		asked = r.Params.Message
-		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
 	}, false)
 	if r := send(t, cs); r.IsError {
 		t.Fatalf("send failed: %s", resultText(r))
@@ -200,7 +200,7 @@ func TestSendOnlyWithThePersonsYes(t *testing.T) {
 func TestSendRefusals(t *testing.T) {
 	yes := func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		t.Error("asked the person, though the send should have been refused first")
-		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
 	}
 	for name, change := range map[string]func(map[string]any){
 		"not a draft":      func(d map[string]any) { d["keywords"] = map[string]bool{} },
@@ -230,7 +230,7 @@ func manyAddrs(n int) []map[string]any {
 func TestSendRefusesAChangedDraft(t *testing.T) {
 	f := newFakeMail()
 	cs := sendSession(t, f, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
 	}, true)
 	first := send(t, cs)
 	if !first.NeedsInput() {
@@ -240,7 +240,7 @@ func TestSendRefusesAChangedDraft(t *testing.T) {
 	f.draft["blobId"] = "b2" // the draft's content was swapped meanwhile
 	f.mu.Unlock()
 	r, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "mail_send", Arguments: map[string]any{"id": "d1"},
-		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}}, RequestState: first.RequestState})
+		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}}, RequestState: first.RequestState})
 	if err != nil || !r.IsError || len(f.submissions) != 0 {
 		t.Errorf("changed draft sent: %v %s", err, resultText(r))
 	}
@@ -294,7 +294,7 @@ func TestSearchFolderAndNoOpMove(t *testing.T) {
 // Drafts -> Sent update that follows it.
 func TestSendReportsTheRealOutcome(t *testing.T) {
 	yes := func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
 	}
 	f := newFakeMail()
 	f.refuse = true

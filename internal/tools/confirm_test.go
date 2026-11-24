@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"context"
 	"strings"
 	"testing"
@@ -49,7 +50,7 @@ func TestConfirmAsksThePerson(t *testing.T) {
 			asked := 0
 			cs := confirmSession(t, v, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 				asked++
-				return &mcp.ElicitResult{Action: action, Content: map[string]any{"confirmed": true}}, nil
+				return &mcp.ElicitResult{Action: action, Content: map[string]any{}}, nil
 			}, false)
 			r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
 			if err != nil || r.IsError || !strings.Contains(resultText(r), want) || asked != 1 {
@@ -68,14 +69,14 @@ func TestConfirmAsksThePerson(t *testing.T) {
 func TestConfirmRefusesForgedAnswers(t *testing.T) {
 	ctx := context.Background()
 	yes := func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}, nil
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
 	}
 	cs := confirmSession(t, "2026-07-28", yes, true)
 	first, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
 	if err != nil || !first.NeedsInput() || first.RequestState == "" {
 		t.Fatalf("first call should ask for input: %v %+v", err, first)
 	}
-	accept := mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}}
+	accept := mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}}
 	for name, state := range map[string]string{
 		"no state":      "",
 		"made up":       "9999999999.AAAA",
@@ -92,22 +93,10 @@ func TestConfirmRefusesForgedAnswers(t *testing.T) {
 	}
 }
 
-// Some clients accept a question by themselves (an empty answer): without
-// the ticked box, an accept is asked once more, then counts as a no.
-func TestConfirmNeedsTheBoxTicked(t *testing.T) {
+// A plain Accept is a yes (no box to tick): the question has no fields,
+// and an accept with no content goes ahead.
+func TestConfirmAcceptIsYes(t *testing.T) {
 	ctx := context.Background()
-	for name, content := range map[string]map[string]any{"empty": nil, "unticked": {"confirmed": false}, "text": {"confirmed": "true"}} {
-		cs := confirmSession(t, "2026-07-28", func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-			return &mcp.ElicitResult{Action: "accept", Content: content}, nil
-		}, false)
-		// The SDK client may already reject an answer that doesn't fit the
-		// form; either way it must not count as a yes.
-		r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test"})
-		if err == nil && !strings.Contains(resultText(r), "without ticking the box") {
-			t.Errorf("%s accept: got %q", name, resultText(r))
-		}
-	}
-	// And at the gateway itself (a client that sends whatever it likes):
 	cs := confirmSession(t, "2026-07-28", func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 		return &mcp.ElicitResult{Action: "accept"}, nil
 	}, true)
@@ -115,29 +104,14 @@ func TestConfirmNeedsTheBoxTicked(t *testing.T) {
 	if err != nil || !first.NeedsInput() {
 		t.Fatalf("expected a question: %v", err)
 	}
-	bare := mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}}
-	second, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", RequestState: first.RequestState, InputResponses: bare})
-	if err != nil || !second.NeedsInput() {
-		t.Fatalf("a bare accept should ask once more: %v %q", err, resultText(second))
+	q, _ := first.InputRequests["confirm"].(*mcp.ElicitParams)
+	schema, _ := json.Marshal(q.RequestedSchema)
+	if strings.Contains(string(schema), "required") || strings.Contains(string(schema), "boolean") {
+		t.Errorf("the question should have no fields: %s", schema)
 	}
-	q, _ := second.InputRequests["confirm"].(*mcp.ElicitParams)
-	if q == nil || !strings.Contains(q.Message, "wasn't ticked") {
-		t.Fatalf("the second question should say the box wasn't ticked: %+v", q)
-	}
-	r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", RequestState: second.RequestState, InputResponses: bare})
-	if err != nil || !r.IsError || !strings.Contains(resultText(r), "without ticking the box") {
-		t.Errorf("a second bare accept: %v %q", err, resultText(r))
-	}
-	// Ticking it on the second asking goes ahead.
-	r, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", RequestState: second.RequestState,
-		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept", Content: map[string]any{"confirmed": true}}}})
+	r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", RequestState: first.RequestState,
+		InputResponses: mcp.InputResponseMap{"confirm": &mcp.ElicitResult{Action: "accept"}}})
 	if err != nil || !strings.Contains(resultText(r), "accepted") {
-		t.Errorf("ticked on the second asking: %v %q", err, resultText(r))
-	}
-	// The first question's state can't be passed off as the second's.
-	forged := strings.Replace(first.RequestState, ".1.", ".2.", 1)
-	r, _ = cs.CallTool(ctx, &mcp.CallToolParams{Name: "confirm_test", RequestState: forged, InputResponses: bare})
-	if r == nil || !r.IsError || !strings.Contains(resultText(r), "doesn't match") {
-		t.Errorf("forged state: %q", resultText(r))
+		t.Errorf("plain accept: %v %q", err, resultText(r))
 	}
 }

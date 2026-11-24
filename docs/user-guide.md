@@ -12,8 +12,8 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | Write drafts, flag and move mail | No: it's all private to you, and nothing leaves your mailbox |
 | Put private entries in your calendar | No |
 | Save new files in your personal space | No |
-| **Send an email** | **Yes**: you see a confirmation and tick a box |
-| **Save a file into a shared space** | **Yes**: you see a confirmation and tick a box |
+| **Send an email** | **Yes**: you see a confirmation and press Accept |
+| **Save a file into a shared space** | **Yes**: you see a confirmation and press Accept |
 | Delete anything, invite people, share links, set up forwarding | **Never**: it can't do these at all |
 
 ## Getting started
@@ -79,11 +79,10 @@ Text begins: Hi Anna, Thursday works for me…
 
 WARNING: 1 recipient(s) outside the company.
 
-[ ] Yes, send this email to 2 recipient(s)
                                     [Decline]  [Accept]
 ```
 
-**Check the recipients, tick the box, then press Accept.** If you don't tick the box, nothing is sent.
+**Check the recipients, then press Accept to send.** Decline or Esc sends nothing, and the draft stays in Drafts.
 
 The first line always names the subject and the recipients. Look for these labels and warnings:
 
@@ -166,7 +165,7 @@ In an app that can't show confirmations, the assistant tells you it can't send. 
 
 **Can the assistant see my colleagues' mail?** No. It uses your login, so it sees what you can see in your mail and file apps, and nothing more.
 
-**Is a draft sent automatically?** No. A draft is sent only when you ask, see the confirmation and tick the box, or when you send it yourself from your mail app.
+**Is a draft sent automatically?** No. A draft is sent only when you ask, see the confirmation and press Accept, or when you send it yourself from your mail app.
 
 **Can it delete things by mistake?** No. Deleting isn't possible through SGNL at all.
 
