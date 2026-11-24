@@ -187,6 +187,9 @@ func main() {
 	// The admin endpoint (<public host>/admin/mcp), only with an admin client.
 	adminURL := ""
 	if id := os.Getenv("SGNL_MCP_ADMIN_CLIENT_ID"); id != "" {
+		if os.Getenv("SGNL_MCP_ADMIN_CLIENT_SECRET") == "" {
+			log.Fatal("sgnl-mcp: SGNL_MCP_ADMIN_CLIENT_ID is set but SGNL_MCP_ADMIN_CLIENT_SECRET is not")
+		}
 		adminURL = pu.Scheme + "://" + pu.Host + "/admin/mcp"
 		adminPRMPath := "/.well-known/oauth-protected-resource/admin/mcp"
 		as := mcp.NewServer(&mcp.Implementation{Name: "sgnl-mcp-admin", Title: label + " admin", Version: version,

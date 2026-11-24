@@ -47,7 +47,12 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 			ctx = auth.WithRequest(ctx, req.Extra.TokenInfo)
 		}
 		cur, ok := auth.Current(ctx)
-		l := slog.With("admin_tool", tool.Name, "user", cur.Username, "args", fmt.Sprint(in))
+		who := cur.Username
+		if !ok {
+			login, _ := auth.Person(ctx)
+			who = login.Username
+		}
+		l := slog.With("admin_tool", tool.Name, "user", who, "args", fmt.Sprint(in))
 		if !ok {
 			l.Warn("admin call refused", "outcome", "not checkable")
 			return nil, zero, fmt.Errorf("couldn't check with the login server whether you're an admin: try again in a moment")
