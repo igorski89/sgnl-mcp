@@ -28,13 +28,22 @@ type Claims struct {
 	Azp      string   `json:"azp"`
 	ClientID string   `json:"client_id"` // RFC 9068 (Authelia); Keycloak uses azp
 	Aud      Audience `json:"aud"`
-	Scope    string   `json:"scope"`
+	Scope    string   `json:"scope"` // Keycloak: space-separated
+	Scp      []string `json:"scp"`   // RFC 9068 issuers (Authelia): a list
 	Username string   `json:"preferred_username"`
 	Name     string   `json:"name"`
 	Email    string   `json:"email"`
 	Groups   []string `json:"groups"`
 	Iat      int64    `json:"iat"`
 	Exp      int64    `json:"exp"`
+}
+
+// Scopes: from scp, else scope.
+func (c Claims) Scopes() []string {
+	if len(c.Scp) > 0 {
+		return c.Scp
+	}
+	return strings.Fields(c.Scope)
 }
 
 // Client: the client the token was issued to: azp, else RFC 9068's client_id.
@@ -128,7 +137,7 @@ func (g *Gateway) Verify(ctx context.Context, tok string, _ *http.Request) (*mcp
 
 // TokenInfo: what Verify hands the SDK for a verified token.
 func TokenInfo(tok string, c Claims, exp time.Time) *mcpauth.TokenInfo {
-	return &mcpauth.TokenInfo{Scopes: strings.Fields(c.Scope), Expiration: exp, UserID: c.Sub,
+	return &mcpauth.TokenInfo{Scopes: c.Scopes(), Expiration: exp, UserID: c.Sub,
 		Extra: map[string]any{"person": person{tok, c}}}
 }
 
@@ -209,6 +218,24 @@ func identityDiff(a, b Claims) string {
 	return ""
 }
 
+// ExchangeScope: what the gateway asks for in the exchange; the login must
+// have been granted all of it (the PRM advertises the same list).
+const ExchangeScope = "openid profile email groups"
+
+// loginEnded: the issuer refused the person's login itself (expired,
+// revoked, logged out), as opposed to a configuration mistake.
+// Keycloak: invalid_token / "Invalid token". Authelia follows RFC 8693
+// §2.2.2: invalid_request ending in "Token is not valid or has expired.".
+func loginEnded(code, desc string) bool {
+	switch code {
+	case "invalid_token", "invalid_grant":
+		return true
+	case "invalid_request":
+		return strings.HasSuffix(strings.TrimSpace(desc), "Token is not valid or has expired.")
+	}
+	return desc == "Invalid token"
+}
+
 func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 	p, err := from(ctx)
 	if err != nil {
@@ -222,8 +249,10 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
 		"requested_token_type": {"urn:ietf:params:oauth:token-type:access_token"},
 		// openid: apps that look the person up at the issuer's userinfo
-		// (OpenCloud) need it; without it userinfo answers 403.
-		"scope": {"openid"},
+		// (Stalwart, OpenCloud) need it. profile, email, groups: issuers
+		// that release claims by scope (Authelia) leave the identity
+		// claims out of the new token without them.
+		"scope": {ExchangeScope},
 	}
 	req, _ := http.NewRequestWithContext(ctx, "POST", g.tokenURL, strings.NewReader(f.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -241,9 +270,7 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 	_ = json.Unmarshal(body, &r)
 	if resp.StatusCode != 200 || r.AccessToken == "" {
 		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "subject", p.claims)
-		// Keycloak: invalid_token / "Invalid token"; RFC 8693 issuers
-		// (Authelia): invalid_grant for an expired, revoked or ended login.
-		if r.Desc == "Invalid token" || r.Error == "invalid_token" || r.Error == "invalid_grant" {
+		if loginEnded(r.Error, r.Desc) {
 			return "", Claims{}, ErrLoginExpired
 		}
 		return "", Claims{}, fmt.Errorf("token exchange: %d %s %s", resp.StatusCode, r.Error, r.Desc)

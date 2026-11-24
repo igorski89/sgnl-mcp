@@ -54,3 +54,30 @@ func TestClientFromAzpOrClientID(t *testing.T) {
 		t.Fatal("Client() should prefer azp, then client_id")
 	}
 }
+
+func TestLoginEnded(t *testing.T) {
+	ended := [][2]string{
+		{"invalid_token", ""}, {"", "Invalid token"}, {"invalid_grant", "x"},
+		{"invalid_request", "The request is missing a required parameter, includes an invalid parameter value, includes a parameter more than once, or is otherwise malformed. Token is not valid or has expired."},
+	}
+	for _, e := range ended {
+		if !loginEnded(e[0], e[1]) {
+			t.Errorf("%q %q should mean the login ended", e[0], e[1])
+		}
+	}
+	config := [][2]string{{"invalid_request", "The request is missing a required parameter."}, {"invalid_scope", ""}, {"invalid_client", ""}, {"unauthorized_client", ""}}
+	for _, e := range config {
+		if loginEnded(e[0], e[1]) {
+			t.Errorf("%q %q is a configuration error, not an ended login", e[0], e[1])
+		}
+	}
+}
+
+func TestScopesFromScpOrScope(t *testing.T) {
+	if s := (Claims{Scp: []string{"openid", "groups"}, Scope: "x"}).Scopes(); len(s) != 2 || s[1] != "groups" {
+		t.Fatal(s)
+	}
+	if s := (Claims{Scope: "openid email"}).Scopes(); len(s) != 2 {
+		t.Fatal(s)
+	}
+}

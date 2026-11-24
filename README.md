@@ -69,9 +69,13 @@ go run ./cmd/sgnl-mcp
 with `SGNL_MCP_LABEL`, `SGNL_MCP_ISSUER`, `SGNL_MCP_CLIENT_SECRET`,
 `SGNL_MCP_JMAP_URL` (and optionally `SGNL_MCP_OPENCLOUD_URL`, `SGNL_MCP_PUBLIC_URL`, `SGNL_MCP_ADDR`,
 `SGNL_MCP_CLIENT_ID`) set; see `cmd/sgnl-mcp/main.go`. The login server
-needs a confidential client for the gateway with token exchange allowed,
-and a client for each MCP client (e.g. Claude Code: public, PKCE, an
-audience mapper adding the gateway's client id). Then, in Claude Code:
+needs a confidential client for the gateway with token exchange
+(impersonation) allowed, and a client for each MCP client (e.g. Claude Code:
+public, PKCE, its access tokens' audience including the gateway's client id).
+Both get the scopes `openid profile email groups`, and the identity claims
+(`preferred_username`, `email`, `name`, `groups`) must be in the JWT access
+tokens themselves. Keycloak and Authelia (with token exchange) both work.
+Then, in Claude Code:
 
 ```
 claude mcp add --transport http --client-id <client> --callback-port <port> sgnl-<instance> <public url>

@@ -147,7 +147,7 @@ func main() {
 
 	prm := mcpauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
 		Resource: public, ResourceName: label, AuthorizationServers: []string{cfg.Issuer},
-		ScopesSupported: []string{"openid", "profile", "email", "groups"}, BearerMethodsSupported: []string{"header"}})
+		ScopesSupported: strings.Fields(auth.ExchangeScope), BearerMethodsSupported: []string{"header"}})
 	mux := http.NewServeMux()
 	mux.Handle("/.well-known/oauth-protected-resource", prm)
 	mux.Handle(prmPath, prm)
