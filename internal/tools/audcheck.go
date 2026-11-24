@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/igorski89/sgnl-mcp/internal/auth"
@@ -65,6 +66,9 @@ func (t *Tools) audCheck(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}
 			c.OK = (c.Want == "refused") == refused && c.Status != 0
 			out.Checks = append(out.Checks, c)
 		}
+	}
+	for _, c := range out.Checks { // statuses only, so the result is in the log too
+		slog.Info("aud_check", "token", c.Token, "app", c.App, "status", c.Status, "want", c.Want, "ok", c.OK)
 	}
 	return nil, out, nil
 }

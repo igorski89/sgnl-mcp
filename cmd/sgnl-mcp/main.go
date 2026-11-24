@@ -23,6 +23,8 @@
 //	                        SGNL_MCP_ALLOW_ALL=1) it refuses to start unless on loopback
 //	SGNL_MCP_INTERNAL_DOMAINS  the company's mail domains (default: each person's own);
 //	                        other recipients are marked "outside" when sending
+//	SGNL_MCP_CONFIRM_CLIENTS login client ids whose apps may ask the person to confirm
+//	                        (send, shared-space save); others can't do those. Unset: all
 //	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
 //	SGNL_MCP_LOG            json: logs as JSON lines (for log collectors)
 //	SGNL_MCP_DEBUG          set: also log each token exchange (claims, never tokens);
@@ -141,6 +143,7 @@ func main() {
 	t := &tools.Tools{Auth: gw, JMAP: jmap.New(jmapURL), TZ: env("SGNL_MCP_TZ", "UTC")}
 	t.Access = access
 	t.InternalDomains = list("SGNL_MCP_INTERNAL_DOMAINS")
+	t.ConfirmClients = list("SGNL_MCP_CONFIRM_CLIENTS")
 	t.Experiments = map[string]bool{}
 	for _, x := range list("SGNL_MCP_EXPERIMENTS") {
 		t.Experiments[x] = true

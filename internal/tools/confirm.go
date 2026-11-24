@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,8 @@ import (
 // call a tool but cannot answer the question.
 
 var errNoConfirm = fmt.Errorf("this needs the person's confirmation, and their app can't ask for it (no MCP elicitation support)")
+
+var errUntrustedClient = fmt.Errorf("this needs the person's confirmation, and this AI app isn't trusted yet to ask them (it might answer by itself): send the draft from your mail app, or use Claude Code")
 
 // confirmKey signs pending confirmations; new per process, so a restart
 // drops them (the person is simply asked again).
@@ -72,9 +75,16 @@ func canonical(args []byte) []byte {
 // The question is a plain Accept/Decline (igor, 2026-11-24: a box to tick
 // before Accept confused people, and a client that answers by itself could
 // tick it as easily). Clients without elicitation are refused.
-func confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind string) (res *mcp.CallToolResult, ok bool, err error) {
+func (t *Tools) confirm(ctx context.Context, req *mcp.CallToolRequest, message, bind string) (res *mcp.CallToolResult, ok bool, err error) {
 	if req == nil || req.Session == nil || req.Params == nil {
 		return nil, false, errNoConfirm
+	}
+	if len(t.ConfirmClients) > 0 {
+		c, _ := auth.Person(ctx)
+		if !slices.Contains(t.ConfirmClients, c.Client()) {
+			slog.Warn("confirmation refused: client not trusted to ask the person", "user", c.Username, "client", c.Client())
+			return nil, false, errUntrustedClient
+		}
 	}
 	if p := req.Session.InitializeParams(); p == nil || p.Capabilities == nil || p.Capabilities.Elicitation == nil {
 		return nil, false, errNoConfirm
@@ -120,7 +130,7 @@ type ConfirmTestOut struct {
 }
 
 func (t *Tools) confirmTest(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ConfirmTestOut, error) {
-	res, ok, err := confirm(ctx, req, "SGNL MCP test: approve this test question? Nothing happens either way.", "")
+	res, ok, err := t.confirm(ctx, req, "SGNL MCP test: approve this test question? Nothing happens either way.", "")
 	if err != nil || res != nil {
 		return res, ConfirmTestOut{}, err
 	}

@@ -127,11 +127,20 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 
 func sendSession(t *testing.T, f *fakeMail, h elicitFn, manual bool) *mcp.ClientSession {
 	t.Helper()
+	return sendSessionWith(t, f, h, manual, nil)
+}
+
+func sendSessionWith(t *testing.T, f *fakeMail, h elicitFn, manual bool, mod func(*Tools)) *mcp.ClientSession {
+	t.Helper()
 	srv := f.serve(t)
 	ctx := context.Background()
 	s := mcp.NewServer(&mcp.Implementation{Name: "t"}, nil)
-	(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(srv.URL + "/session"), Access: Access{All: true},
-		InternalDomains: []string{"co.example"}}).Register(s)
+	tl := &Tools{Auth: fakeTokens{}, JMAP: jmap.New(srv.URL + "/session"), Access: Access{All: true},
+		InternalDomains: []string{"co.example"}}
+	if mod != nil {
+		mod(tl)
+	}
+	tl.Register(s)
 	ct, st := mcp.NewInMemoryTransports()
 	if _, err := s.Connect(ctx, st, nil); err != nil {
 		t.Fatal(err)
@@ -312,5 +321,19 @@ func TestSendReportsTheRealOutcome(t *testing.T) {
 	r = send(t, sendSession(t, f, yes, false))
 	if r.IsError || !strings.Contains(resultText(r), "it is now in Sent") {
 		t.Errorf("normal send reported as: %s", resultText(r))
+	}
+}
+
+// An app not on the trusted list can't send: refused before the person is
+// asked (it might answer the question by itself).
+func TestSendRefusedForUntrustedClient(t *testing.T) {
+	f := newFakeMail()
+	cs := sendSessionWith(t, f, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		t.Error("asked through an untrusted client")
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	}, false, func(tl *Tools) { tl.ConfirmClients = []string{"sgnl-mcp-claude-code"} })
+	r := send(t, cs)
+	if !r.IsError || !strings.Contains(resultText(r), "isn't trusted yet") || len(f.submissions) != 0 {
+		t.Fatalf("got %q, %d submissions", resultText(r), len(f.submissions))
 	}
 }
