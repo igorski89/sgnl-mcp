@@ -6,6 +6,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -105,10 +107,11 @@ type Gateway struct {
 	tokenURL string
 	http     *http.Client
 
-	// App tokens, per person and login client, reused until shortly before
-	// they expire: clients refresh their login often and run tool calls in
-	// parallel, and an issuer may refuse a just-replaced login (Authelia
-	// revokes the old access token when the refresh token rotates).
+	// App tokens, per presented login token (its SHA-256), reused until
+	// shortly before either expires; concurrent calls with the same login
+	// token share one exchange. Bound to the login token, so a login the
+	// issuer has revoked or rotated out never rides on another one's
+	// cached app token.
 	flight singleflight.Group
 	mu     sync.Mutex
 	cache  map[string]appTok
@@ -126,6 +129,11 @@ const reuseMargin = 30 * time.Second
 
 // expiryMargin: a login token this close to expiry is refused (401), so the
 // client refreshes it before the gateway exchanges it.
+//
+// Verify also exchanges the login token before the request reaches a tool:
+// if the issuer refuses it (revoked, rotated out by a refresh, logged out),
+// the client gets 401 invalid_token, refreshes and retries, instead of a
+// tool error.
 const expiryMargin = 10 * time.Second
 
 func New(ctx context.Context, cfg Config) (*Gateway, error) {
@@ -157,11 +165,34 @@ func (g *Gateway) Verify(ctx context.Context, tok string, _ *http.Request) (*mcp
 	if err := t.Claims(&c); err != nil {
 		return nil, fmt.Errorf("%w: %v", mcpauth.ErrInvalidToken, err)
 	}
+	return g.verified(ctx, tok, c, t.Expiry)
+}
+
+// verified: the checks after the signature, issuer and expiry.
+func (g *Gateway) verified(ctx context.Context, tok string, c Claims, exp time.Time) (*mcpauth.TokenInfo, error) {
 	if !slices.ContainsFunc(g.cfg.Audiences, func(a string) bool { return slices.Contains(c.Aud, a) }) {
 		slog.Info("token refused", "reason", "audience", "claims", c)
 		return nil, fmt.Errorf("%w: audience", mcpauth.ErrInvalidToken)
 	}
-	return TokenInfo(tok, c, t.Expiry), nil
+	if err := g.admit(ctx, person{tok, c}); err != nil {
+		return nil, err
+	}
+	return TokenInfo(tok, c, exp), nil
+}
+
+// admit exchanges a verified login token up front (cached for the tools).
+// A refusal by the issuer is a 401; any other failure (issuer down,
+// configuration) lets the request through, and the tool reports it.
+func (g *Gateway) admit(ctx context.Context, p person) error {
+	_, _, err := g.appTokenFor(ctx, p)
+	if errors.Is(err, ErrAppTokenRefused) {
+		slog.Info("token refused", "reason", "the login server refused to exchange it", "claims", p.claims)
+		return fmt.Errorf("%w: the login server no longer accepts this login", mcpauth.ErrInvalidToken)
+	}
+	if err != nil {
+		slog.Warn("exchange at login check failed; the tool will retry", "error", err.Error(), "claims", p.claims)
+	}
+	return nil
 }
 
 // TokenInfo: what Verify hands the SDK for a verified token.
@@ -211,7 +242,8 @@ func from(ctx context.Context) (person, error) {
 var ErrAppTokenRefused = errors.New("the SGNL login server refused access to this app just now: try again. If it keeps failing, log in again (in Claude Code: /mcp, then Authenticate)")
 
 // AppToken trades the caller's token for a short-lived one issued to the
-// gateway, reused for the same person until shortly before it expires.
+// gateway, reused for the same login token until shortly before either
+// expires.
 func (g *Gateway) AppToken(ctx context.Context) (string, error) {
 	tok, _, err := g.appToken(ctx)
 	return tok, err
@@ -272,13 +304,15 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 	if err != nil {
 		return "", Claims{}, err
 	}
-	if p.claims.Sub == "" {
+	return g.appTokenFor(ctx, p)
+}
+
+func (g *Gateway) appTokenFor(ctx context.Context, p person) (string, Claims, error) {
+	if p.token == "" {
 		return "", Claims{}, errors.New("not logged in")
 	}
-	// Keyed on the identity too: a changed name or group gets a new token.
-	id, _ := json.Marshal([]any{p.claims.Sub, p.claims.Client(), p.claims.Username, p.claims.Email,
-		p.claims.Name, slices.Sorted(slices.Values(p.claims.Groups))})
-	key := string(id)
+	sum := sha256.Sum256([]byte(p.token))
+	key := hex.EncodeToString(sum[:])
 	g.mu.Lock()
 	a, ok := g.cache[key]
 	g.mu.Unlock()
@@ -290,7 +324,11 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 		if err != nil {
 			return nil, err
 		}
-		a := appTok{tok, c, time.Unix(c.Exp, 0).Add(-reuseMargin)}
+		exp := min(c.Exp, p.claims.Exp)
+		if exp == 0 {
+			exp = max(c.Exp, p.claims.Exp)
+		}
+		a := appTok{tok, c, time.Unix(exp, 0).Add(-reuseMargin)}
 		g.mu.Lock()
 		for k, old := range g.cache { // drop expired entries
 			if !g.now().Before(old.until) {
@@ -301,17 +339,6 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 		g.mu.Unlock()
 		return a, nil
 	})
-	if errors.Is(err, ErrAppTokenRefused) {
-		// The shared exchange may have run with another (older) login of
-		// this person; try once more with this call's own.
-		tok, c, err := g.exchange(ctx, p)
-		if err == nil {
-			g.mu.Lock()
-			g.cache[key] = appTok{tok, c, time.Unix(c.Exp, 0).Add(-reuseMargin)}
-			g.mu.Unlock()
-		}
-		return tok, c, err
-	}
 	if err != nil {
 		return "", Claims{}, err
 	}

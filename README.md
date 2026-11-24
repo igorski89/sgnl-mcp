@@ -47,9 +47,11 @@ needs your click, staying safe).
 - **No token passthrough:** the gateway trades the person's token for a
   short-lived one of its own (RFC 8693 token exchange) and calls the app with
   that. The apps see the person, with their own permissions; the gateway
-  holds no master credentials. The app token is kept in memory and reused
-  for that person until 30 s before it expires; concurrent calls share one
-  exchange.
+  holds no master credentials. The exchange happens when a request arrives:
+  if the login server refuses the login (revoked, rotated out, logged out),
+  the client gets 401 `invalid_token` and refreshes. The app token is kept in
+  memory for that one login token (never another of the same person) until
+  30 s before either expires; concurrent calls share one exchange.
 - **Narrow writes:** the JMAP client allows only the methods the tools need
   (no destroy except replacing a verified draft; mail submission only from
   `mail_send`); the OpenCloud client only reads and creates new files.

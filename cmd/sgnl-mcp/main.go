@@ -155,7 +155,7 @@ func main() {
 	mux.Handle("/.well-known/oauth-protected-resource", prm)
 	mux.Handle(prmPath, prm)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
-	mux.Handle(pu.Path, mcpauth.RequireBearerToken(gw.Verify, &mcpauth.RequireBearerTokenOptions{ResourceMetadataURL: prmURL})(
+	mux.Handle(pu.Path, auth.Protect(mcpauth.RequireBearerToken(gw.Verify, &mcpauth.RequireBearerTokenOptions{ResourceMetadataURL: prmURL}),
 		mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)))
 
 	slog.Info("sgnl-mcp", "version", version, "label", label, "endpoint", public, "listen", addr, "issuer", cfg.Issuer,
