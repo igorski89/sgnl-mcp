@@ -168,3 +168,18 @@ func TestPerAppAudience(t *testing.T) {
 		t.Fatalf("%d exchanges, audiences %q", n.Load(), asked.aud)
 	}
 }
+
+func TestPolicyDeniedMessages(t *testing.T) {
+	g := &Gateway{cfg: Config{MailAudience: "stalwart-webui", FilesAudience: "opencloud"}}
+	deny := "The request is otherwise malformed. The authorization policy of the audience client 'opencloud' does not permit this user."
+	if err := g.policyDenied(deny, "opencloud"); err == nil || !strings.Contains(err.Error(), "don't have access to files") || loginEnded("invalid_grant", deny) && errors.Is(err, ErrAppTokenRefused) {
+		t.Fatalf("policy denial: %v", err)
+	}
+	mfa := "The authentication level of the 'subject_token' is insufficient for the authorization policy of the audience client 'stalwart-webui'."
+	if err := g.policyDenied(mfa, "stalwart-webui"); err == nil || !strings.Contains(err.Error(), "second factor") || !strings.Contains(err.Error(), "mail") {
+		t.Fatalf("2FA: %v", err)
+	}
+	if g.policyDenied("... Token is not valid or has expired.", "opencloud") != nil {
+		t.Fatal("an ended login is not a policy denial")
+	}
+}

@@ -26,16 +26,16 @@ func TestPeekClaims(t *testing.T) {
 }
 
 func TestIdentityDiff(t *testing.T) {
-	a := Claims{Username: "u", Email: "e", Name: "n", Groups: []string{"x", "y"}}
+	a := Claims{Sub: "s", Username: "u", Email: "e", Name: "n", Groups: []string{"x", "y"}}
 	b := a
-	b.Groups = []string{"y", "x"}
+	b.Groups, b.Name = []string{"y", "x", "new"}, "N" // newer from the issuer: fine
 	if d := identityDiff(a, b); d != "" {
-		t.Errorf("same identity, group order differs: %q", d)
+		t.Errorf("same person, newer groups and name: %q", d)
 	}
 	for field, mod := range map[string]func(*Claims){
-		"groups": func(c *Claims) { c.Groups = []string{"x"} },
-		"email":  func(c *Claims) { c.Email = "" },
-		"name":   func(c *Claims) { c.Name = "m" },
+		"subject":  func(c *Claims) { c.Sub = "t" },
+		"username": func(c *Claims) { c.Username = "v" },
+		"email":    func(c *Claims) { c.Email = "" },
 	} {
 		c := a
 		c.Groups = append([]string(nil), a.Groups...)

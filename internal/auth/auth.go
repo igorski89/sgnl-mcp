@@ -286,19 +286,26 @@ func (g *Gateway) FilesToken(ctx context.Context) (string, error) {
 		slog.Warn("app token refused: identity differs from the person's", "field", d, "person", p.claims, "app", c)
 		return "", fmt.Errorf("the app token's %s differs from your login's; refusing to call the app", d)
 	}
+	if p.claims.Name != c.Name || !slices.Equal(slices.Sorted(slices.Values(p.claims.Groups)), slices.Sorted(slices.Values(c.Groups))) {
+		slog.Info("app token has newer name or groups than the login", "user", c.Username,
+			"login_groups", len(p.claims.Groups), "app_groups", len(c.Groups), "name_changed", p.claims.Name != c.Name)
+	}
 	return tok, nil
 }
 
+// identityDiff: whether the app token is for someone else than the login
+// (subject, username, email). Name and groups may differ: the issuer fills
+// the app token from its current user store, while a login (and its
+// refreshes) keeps what was true when the person logged in; so after a
+// group change the app token is the up-to-date one.
 func identityDiff(a, b Claims) string {
 	switch {
+	case a.Sub != b.Sub:
+		return "subject"
 	case a.Username == "" || a.Username != b.Username:
 		return "username"
 	case a.Email != b.Email:
 		return "email"
-	case a.Name != b.Name:
-		return "name"
-	case !slices.Equal(slices.Sorted(slices.Values(a.Groups)), slices.Sorted(slices.Values(b.Groups))):
-		return "groups"
 	}
 	return ""
 }
@@ -306,6 +313,28 @@ func identityDiff(a, b Claims) string {
 // ExchangeScope: what the gateway asks for in the exchange; the login must
 // have been granted all of it (the PRM advertises the same list).
 const ExchangeScope = "openid profile email groups"
+
+// policyDenied: the issuer refused because the app's access policy doesn't
+// let this person in (logging in again won't help), or wants a stronger
+// login. Authelia (sgnl fork) says so only in the description, with
+// invalid_grant; the texts are stable (authelia-01, 2026-11-24).
+func (g *Gateway) policyDenied(desc, aud string) error {
+	app := "this app"
+	switch aud {
+	case "":
+	case g.cfg.MailAudience:
+		app = "mail, calendar and contacts"
+	case g.cfg.FilesAudience:
+		app = "files"
+	}
+	switch {
+	case strings.Contains(desc, "does not permit this user"):
+		return fmt.Errorf("you don't have access to %s in SGNL (the login server's policy); logging in again won't change that: ask your administrator", app)
+	case strings.Contains(desc, "authentication level of the 'subject_token' is insufficient"):
+		return fmt.Errorf("%s needs a login with a second factor: log in again with two-factor authentication (in Claude Code: /mcp, then Authenticate)", app)
+	}
+	return nil
+}
 
 // loginEnded: the issuer refused the person's login itself (expired,
 // revoked, logged out, or just replaced by a refresh), as opposed to a
@@ -405,6 +434,9 @@ func (g *Gateway) exchange(ctx context.Context, p person, aud string) (string, C
 	_ = json.Unmarshal(body, &r)
 	if resp.StatusCode != 200 || r.AccessToken == "" {
 		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "subject", p.claims)
+		if err := g.policyDenied(r.Desc, aud); err != nil {
+			return "", Claims{}, err
+		}
 		if loginEnded(r.Error, r.Desc) {
 			return "", Claims{}, ErrAppTokenRefused
 		}
