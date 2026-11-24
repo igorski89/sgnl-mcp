@@ -15,7 +15,7 @@ import (
 
 type fakeTokens struct{}
 
-func (fakeTokens) MailToken(context.Context) (string, error)          { return "tok", nil }
+func (fakeTokens) MailToken(context.Context) (string, error)  { return "tok", nil }
 func (fakeTokens) FilesToken(context.Context) (string, error) { return "tok", nil }
 
 // fakeMail: a JMAP server with one draft, the person's identity, and a

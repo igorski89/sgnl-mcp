@@ -7,8 +7,8 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,7 +92,7 @@ func PeekClaims(tok string) (c Claims) {
 }
 
 type Config struct {
-	Issuer       string // e.g. https://id.example.com/realms/example
+	Issuer string // e.g. https://id.example.com/realms/example
 	// Audiences: a person's token must carry one of these in "aud": the
 	// gateway's client id (Keycloak's audience mapper) or its public URL
 	// (RFC 8707 resource indicators, which Claude Code sends).
@@ -158,7 +158,9 @@ func New(ctx context.Context, cfg Config) (*Gateway, error) {
 	}
 	// Public-key algorithms only (as go-oidc's own provider does): never
 	// HS* (a shared-secret "signature" anyone with the key set could forge).
-	algs := slices.DeleteFunc(meta.Algs, func(a string) bool { return !strings.HasPrefix(a, "RS") && !strings.HasPrefix(a, "ES") && !strings.HasPrefix(a, "PS") && a != "EdDSA" })
+	algs := slices.DeleteFunc(meta.Algs, func(a string) bool {
+		return !strings.HasPrefix(a, "RS") && !strings.HasPrefix(a, "ES") && !strings.HasPrefix(a, "PS") && a != "EdDSA"
+	})
 	keys := &http.Client{Timeout: 15 * time.Second, Transport: &jwksCooldown{next: http.DefaultTransport,
 		url: meta.JWKS, every: jwksEvery, now: time.Now}}
 	ks := oidc.NewRemoteKeySet(oidc.ClientContext(context.WithoutCancel(ctx), keys), meta.JWKS)
