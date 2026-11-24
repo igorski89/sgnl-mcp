@@ -26,6 +26,7 @@ import (
 type Claims struct {
 	Sub      string   `json:"sub"`
 	Azp      string   `json:"azp"`
+	ClientID string   `json:"client_id"` // RFC 9068 (Authelia); Keycloak uses azp
 	Aud      Audience `json:"aud"`
 	Scope    string   `json:"scope"`
 	Username string   `json:"preferred_username"`
@@ -34,6 +35,14 @@ type Claims struct {
 	Groups   []string `json:"groups"`
 	Iat      int64    `json:"iat"`
 	Exp      int64    `json:"exp"`
+}
+
+// Client: the client the token was issued to: azp, else RFC 9068's client_id.
+func (c Claims) Client() string {
+	if c.Azp != "" {
+		return c.Azp
+	}
+	return c.ClientID
 }
 
 // Audience: "aud" is a string or a list.
@@ -53,7 +62,7 @@ func (a *Audience) UnmarshalJSON(b []byte) error {
 
 // LogValue: the claims worth logging.
 func (c Claims) LogValue() slog.Value {
-	return slog.GroupValue(slog.String("user", c.Username), slog.String("azp", c.Azp),
+	return slog.GroupValue(slog.String("user", c.Username), slog.String("azp", c.Client()),
 		slog.Any("aud", []string(c.Aud)), slog.Time("iat", time.Unix(c.Iat, 0)), slog.Duration("exp_in", time.Until(time.Unix(c.Exp, 0)).Round(time.Second)))
 }
 
@@ -232,14 +241,16 @@ func (g *Gateway) appToken(ctx context.Context) (string, Claims, error) {
 	_ = json.Unmarshal(body, &r)
 	if resp.StatusCode != 200 || r.AccessToken == "" {
 		slog.Warn("token exchange failed", "status", resp.StatusCode, "error", r.Error, "desc", r.Desc, "subject", p.claims)
-		if r.Desc == "Invalid token" || r.Error == "invalid_token" {
+		// Keycloak: invalid_token / "Invalid token"; RFC 8693 issuers
+		// (Authelia): invalid_grant for an expired, revoked or ended login.
+		if r.Desc == "Invalid token" || r.Error == "invalid_token" || r.Error == "invalid_grant" {
 			return "", Claims{}, ErrLoginExpired
 		}
 		return "", Claims{}, fmt.Errorf("token exchange: %d %s %s", resp.StatusCode, r.Error, r.Desc)
 	}
 	c := PeekClaims(r.AccessToken)
-	if c.Azp != g.cfg.ClientID {
-		return "", Claims{}, fmt.Errorf("exchanged token issued to %q, not %s", c.Azp, g.cfg.ClientID)
+	if c.Client() != g.cfg.ClientID {
+		return "", Claims{}, fmt.Errorf("exchanged token issued to %q, not %s", c.Client(), g.cfg.ClientID)
 	}
 	slog.Debug("token exchanged", "subject", p.claims, "exchanged", c)
 	return r.AccessToken, c, nil

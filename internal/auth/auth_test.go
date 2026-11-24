@@ -48,3 +48,9 @@ func TestIdentityDiff(t *testing.T) {
 		t.Error("empty username must differ")
 	}
 }
+
+func TestClientFromAzpOrClientID(t *testing.T) {
+	if (Claims{Azp: "a", ClientID: "b"}).Client() != "a" || (Claims{ClientID: "b"}).Client() != "b" {
+		t.Fatal("Client() should prefer azp, then client_id")
+	}
+}
