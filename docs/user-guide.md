@@ -156,7 +156,7 @@ In an app that can't show confirmations, the assistant tells you it can't send. 
 
 ## Limits
 
-- The assistant can send a few emails per minute and to at most 50 recipients per email.
+- The assistant can send a few emails per minute and to at most 50 recipients per email. It can't send emails with Bcc (hidden) recipients yet: send those from your mail app.
 - Drafts that have attachments can't be changed by the assistant: edit them in your mail app.
 - Very long mails and files are shortened when the assistant reads them.
 - If you work very fast, the assistant may ask you to wait a moment.

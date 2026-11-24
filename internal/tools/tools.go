@@ -60,7 +60,7 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "mailbox_list", Annotations: ro,
 		Description: "Your mail folders with unread and total counts."}, t.mailboxList)
 	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
-		Description: "Send a draft (from Drafts) as it is. The person is asked in their app first, with every recipient shown; nothing is sent without their yes. To change the mail, update the draft first."}, t.mailSend)
+		Description: "Send a draft (from Drafts) as it is. The person is asked in their app first, with every recipient shown; nothing is sent without their yes. To change the mail, update the draft first. Drafts with Bcc recipients can't be sent yet."}, t.mailSend)
 	add(t, s, &mcp.Tool{Name: "mail_draft_create", Annotations: wr,
 		Description: "Write a new mail, a reply (reply_to, optionally reply_all) or a forward (forward_of) and save it in Drafts. Nothing is sent: to send it, use mail_send (the person confirms) or the person sends it from their mail app."}, t.mailDraftCreate)
 	add(t, s, &mcp.Tool{Name: "mail_draft_update", Annotations: wr,

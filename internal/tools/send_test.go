@@ -36,7 +36,7 @@ func newFakeMail() *fakeMail {
 		"id": "d1", "blobId": "b1", "keywords": map[string]bool{"$draft": true}, "mailboxIds": map[string]bool{"dr": true},
 		"from":    []map[string]any{{"email": "igor@co.example"}},
 		"to":      []map[string]any{{"email": "colleague@co.example"}, {"email": "client@other.example"}},
-		"bcc":     []map[string]any{{"email": "hidden@other.example"}},
+		"cc":      []map[string]any{{"email": "hidden@other.example"}},
 		"subject": "Offer", "textBody": []map[string]any{{"partId": "1", "type": "text/plain"}},
 		"bodyValues": map[string]any{"1": map[string]any{"value": "Hello"}},
 	}}
@@ -171,12 +171,12 @@ func TestSendOnlyWithThePersonsYes(t *testing.T) {
 	if sub["emailId"] != "d1" || sub["identityId"] != "id1" || len(sub) != 2 {
 		t.Errorf("submission: %v", sub)
 	}
-	// Every recipient is shown, Bcc included, with what is special about it.
+	// Every recipient is shown, with what is special about it.
 	if !strings.HasPrefix(asked, `Send "Offer" to colleague@co.example, client@other.example, hidden@other.example (2 OUTSIDE the company)?`) {
 		t.Errorf("first line lacks the essentials:\n%s", asked)
 	}
 	for _, w := range []string{"To: colleague@co.example\n", "To: client@other.example  (OUTSIDE the company, never written to before)",
-		"Bcc: hidden@other.example  (OUTSIDE the company, never written to before)", "Subject: Offer", "2 recipient(s) outside"} {
+		"Cc: hidden@other.example  (OUTSIDE the company, never written to before)", "Subject: Offer", "2 recipient(s) outside"} {
 		if !strings.Contains(asked, w) {
 			t.Errorf("question lacks %q:\n%s", w, asked)
 		}
@@ -207,7 +207,8 @@ func TestSendRefusals(t *testing.T) {
 		"not in Drafts":    func(d map[string]any) { d["mailboxIds"] = map[string]bool{"in": true} },
 		"someone else's":   func(d map[string]any) { d["from"] = []map[string]any{{"email": "ceo@co.example"}} },
 		"foreign Reply-To": func(d map[string]any) { d["replyTo"] = []map[string]any{{"email": "x@evil.example"}} },
-		"no recipients":    func(d map[string]any) { d["to"], d["bcc"] = nil, nil },
+		"no recipients":    func(d map[string]any) { d["to"], d["cc"] = nil, nil },
+		"Bcc":              func(d map[string]any) { d["bcc"] = []map[string]any{{"email": "b@co.example"}} },
 		"too many":         func(d map[string]any) { d["to"] = manyAddrs(maxRecipients + 1) },
 	} {
 		f := newFakeMail()
