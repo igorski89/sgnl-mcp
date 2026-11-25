@@ -194,3 +194,29 @@ func TestVacationOnlyWithFlag(t *testing.T) {
 		}
 	}
 }
+
+func TestImportNeverMails(t *testing.T) {
+	ev := func(mod func(e map[string]any)) Call {
+		e := map[string]any{"title": "x", "organizerCalendarAddress": "mailto:b@x.example", "participants": map[string]any{}, "calendarIds": map[string]bool{"c": true}}
+		if mod != nil {
+			mod(e)
+		}
+		return Call{Method: "CalendarEvent/set", Import: true, Args: map[string]any{"accountId": "A", "sendSchedulingMessages": false, "create": map[string]any{"e": e}}}
+	}
+	if err := check(ev(nil)); err != nil {
+		t.Fatal(err)
+	}
+	send := ev(nil)
+	send.Args["sendSchedulingMessages"] = true
+	for name, c := range map[string]Call{
+		"send":         send,
+		"no organizer": ev(func(e map[string]any) { delete(e, "organizerCalendarAddress") }),
+		"alerts":       ev(func(e map[string]any) { e["alerts"] = map[string]any{} }),
+		"replyTo":      ev(func(e map[string]any) { e["replyTo"] = map[string]any{} }),
+		"with invite":  {Method: "CalendarEvent/set", Import: true, Invite: true, Args: ev(nil).Args},
+	} {
+		if err := check(c); err == nil {
+			t.Errorf("%s: allowed", name)
+		}
+	}
+}

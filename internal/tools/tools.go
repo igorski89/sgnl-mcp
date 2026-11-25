@@ -99,6 +99,8 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). No one is invited: for a meeting with others use event_invite."}, t.eventCreate)
 	add(t, s, &mcp.Tool{Name: "event_invite", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 		Description: "Create a meeting in your calendar and invite people to it: they get an invitation by email. The person is asked in their app first, with every attendee shown; nothing is created or sent without their yes. Check free times first with availability_get."}, t.eventInvite)
+	add(t, s, &mcp.Tool{Name: "event_import", Annotations: wr,
+		Description: "Add an invitation received by mail (its calendar part) to your calendar, e.g. from someone outside the company. The person is asked first, with the organizer shown; nothing is sent. Answer it afterwards with event_respond."}, t.eventImport)
 	add(t, s, &mcp.Tool{Name: "event_respond", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 		Description: "Answer an invitation: accept, decline or maybe. The person is asked in their app first; the organizer then gets the answer by email. Not for repeating events yet."}, t.eventRespond)
 	add(t, s, &mcp.Tool{Name: "event_update", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},

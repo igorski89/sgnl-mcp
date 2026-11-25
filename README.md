@@ -36,6 +36,7 @@ needs your click, staying safe).
 | `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
 | `event_create` | calendar (JMAP) | a private event, no participants |
 | `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |
+| `event_import` | mail → calendar | add an invitation received by mail (e.g. from outside) to the calendar, **only after the person confirms**; mails no one |
 | `event_respond` | calendar (JMAP) | answer an invitation (accept/decline/maybe); the organizer is mailed, **only after the person confirms** |
 | `event_update` | calendar (JMAP) | change time, title, place or text of the person's own event; for a meeting **only after the person confirms**, attendees get the update |
 | `event_cancel` | calendar (JMAP) | cancel a meeting the person organizes (attendees get a cancellation) or delete a private event, **only after the person confirms** |
@@ -147,7 +148,10 @@ only on loopback.
   never who is invited) and cancellations (`event_cancel`: one event) each
   have their own narrow path in the JMAP client and need the person's yes;
   nothing is mailed about an event that is over, and repeating events
-  aren't changed yet.
+  aren't changed yet. Invitations from outside aren't added by the mail
+  server itself; `event_import` adds one from the received mail after the
+  person confirms (organizer shown, OUTSIDE marked), only if they are an
+  attendee, without alerts or links, and without mailing anyone.
 - Files: `file_save` only makes new files; saving into a shared space
   needs the person's confirmation. `file_edit` changes a text file in the
   personal space after the person confirms the changes shown; the gateway

@@ -36,7 +36,7 @@ var allowed = []string{
 	"Calendar/get", "CalendarEvent/get", "CalendarEvent/query", "CalendarEvent/set",
 	"AddressBook/get", "ContactCard/get", "ContactCard/query",
 	"Principal/get", "Principal/query", "Principal/getAvailability",
-	"VacationResponse/get", "VacationResponse/set",
+	"VacationResponse/get", "VacationResponse/set", "CalendarEvent/parse",
 }
 
 // vacationFields: what an out-of-office update may set (plain text only).
@@ -196,6 +196,11 @@ type Call struct {
 	// Cancel: the only destroy of an event, for event_cancel after the
 	// person confirmed: exactly one id, nothing else.
 	Cancel bool
+	// Import: an invitation received by mail into the calendar, for
+	// event_import after the person confirmed: one create, the event as
+	// the organizer wrote it (participants and organizer included), and
+	// never sendSchedulingMessages: importing mails no one.
+	Import bool
 	// Vacation: the out-of-office reply, for out_of_office_set (switching it
 	// on only after the person confirmed the dates and text).
 	Vacation bool
@@ -205,6 +210,42 @@ type Call struct {
 var rescheduleFields = []string{"title", "start", "duration", "timeZone", "showWithoutTime", "locations", "description"}
 
 var answers = []string{"accepted", "declined", "tentative"}
+
+// importFields: what an imported invitation may carry.
+var importFields = []string{"@type", "uid", "title", "description", "start", "timeZone", "duration", "showWithoutTime",
+	"locations", "virtualLocations", "status", "sequence", "organizerCalendarAddress", "participants", "recurrenceRules",
+	"excludedRecurrenceRules", "recurrenceOverrides", "calendarIds"}
+
+// checkImport: see Call.Import.
+func checkImport(call Call) error {
+	for k, v := range call.Args {
+		switch k {
+		case "accountId", "create":
+		case "sendSchedulingMessages":
+			if v != false {
+				return fmt.Errorf("jmap: import: mails no one")
+			}
+		default:
+			return fmt.Errorf("jmap: import: %s is not allowed", k)
+		}
+	}
+	c, _ := call.Args["create"].(map[string]any)
+	if len(c) != 1 {
+		return fmt.Errorf("jmap: import: exactly one event")
+	}
+	for _, ev := range c {
+		e, _ := ev.(map[string]any)
+		if e["organizerCalendarAddress"] == nil {
+			return fmt.Errorf("jmap: import: an invitation has an organizer")
+		}
+		for f := range e {
+			if !slices.Contains(importFields, f) {
+				return fmt.Errorf("jmap: import: %s is not taken over", f)
+			}
+		}
+	}
+	return nil
+}
 
 // checkCalendarChange: see Call.Reply, Call.Reschedule, Call.Cancel.
 func checkCalendarChange(call Call) error {
@@ -290,10 +331,16 @@ func check(call Call) error {
 		}
 		return checkVacation(call)
 	}
+	if call.Method == "CalendarEvent/set" && call.Import {
+		if call.Invite || call.Reply || call.Reschedule || call.Cancel {
+			return fmt.Errorf("jmap: one kind of calendar change per call")
+		}
+		return checkImport(call)
+	}
 	if call.Method == "CalendarEvent/set" && (call.Reply || call.Reschedule || call.Cancel) {
 		return checkCalendarChange(call)
 	}
-	if call.Reply || call.Reschedule || call.Cancel {
+	if call.Reply || call.Reschedule || call.Cancel || call.Import {
 		return fmt.Errorf("jmap: calendar change flag on %s", call.Method)
 	}
 	if d, ok := call.Args["destroy"]; ok && d != nil {

@@ -18,13 +18,15 @@ type fakeCal struct {
 	sets        []map[string]any
 	unscheduled bool // the mail server made no one organizer (no invitations)
 	events      map[string]map[string]any
+	mails       []any          // Email/get answer
+	parsed      map[string]any // CalendarEvent/parse answer
 }
 
 func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Calendars: "A"}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Calendars: "A", jmap.Mail: "A"}})
 			return
 		}
 		var req struct{ MethodCalls [][]json.RawMessage }
@@ -48,6 +50,10 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 					}
 				}
 				res = map[string]any{"list": list}
+			case "Email/get":
+				res = map[string]any{"list": f.mails}
+			case "CalendarEvent/parse":
+				res = map[string]any{"parsed": f.parsed}
 			case "Calendar/get":
 				res = map[string]any{"list": []map[string]any{{"id": "c1", "isDefault": true}}}
 			case "CalendarEvent/set":
