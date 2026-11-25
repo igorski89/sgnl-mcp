@@ -141,4 +141,5 @@ only on loopback.
 
 ## License
 
-MIT
+MIT. The container image also carries the license texts of Go and of every library compiled into the
+binary (all MIT, BSD or Apache-2.0) in `/licenses`; the image build gathers them and fails when one is missing.
