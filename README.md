@@ -29,6 +29,8 @@ needs your click, staying safe).
 | `mail_flag` | mail (JMAP) | read / unread, flagged |
 | `mail_move` | mail (JMAP) | move between folders; never to Trash, Junk, Sent or Drafts |
 | `mail_trash` | mail (JMAP) | move mail to Trash (at most 25), **only after the person confirms**; restorable |
+| `out_of_office_get` | mail (JMAP) | the automatic reply: on/off, dates, text |
+| `out_of_office_set` | mail (JMAP) | switch it on (**only after the person confirms** dates and whole text; plain text) or off |
 | `mail_send` | mail (JMAP) | send a draft, **only after the person confirms** |
 | `event_list` | calendar (JMAP) | events in a date range |
 | `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
@@ -133,6 +135,10 @@ only on loopback.
   drafts stay in Drafts; nothing is deleted except a draft being replaced.
   `mail_trash` moves mail to Trash (restorable) after the person confirms
   the listed mails; nothing is ever destroyed.
+  The out-of-office reply (it answers every sender) is switched on only
+  after the person confirms the dates and the whole text; plain text only,
+  through its own path in the JMAP client. Forwarding and filters stay
+  impossible.
 - Calendar: events with attendees (which send invitations) only through
   `event_invite`, after the person confirms; the mail server makes the
   person the organizer, the gateway can't set organizer or reply address.

@@ -85,6 +85,11 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "mail_trash", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
 		Description: "Move messages to Trash (at most 25). The person is asked in their app first, with each message shown; nothing moves without their yes. They can be restored from Trash; nothing is deleted for good."}, t.mailTrash)
 
+	add(t, s, &mcp.Tool{Name: "out_of_office_get", Annotations: ro,
+		Description: "Your automatic out-of-office reply: whether it's on, its dates, subject and text."}, t.outOfOfficeGet)
+	add(t, s, &mcp.Tool{Name: "out_of_office_set", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
+		Description: "Switch your automatic out-of-office reply on (dates, subject, plain text) or off. Switching on asks the person first, showing the dates and the whole text, because everyone who writes gets it, outside the company too. Give an end date unless the person wants none. Switching off needs no question."}, t.outOfOfficeSet)
+
 	// Calendar
 	add(t, s, &mcp.Tool{Name: "event_list", Annotations: ro,
 		Description: "Your calendar events in a date range (default: the next 7 days)."}, t.eventList)

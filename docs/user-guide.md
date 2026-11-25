@@ -18,6 +18,7 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | **Share a file or folder with a colleague** | **Yes**: you see a confirmation and press Accept |
 | **Save a file into a shared space** | **Yes**: you see a confirmation and press Accept |
 | **Move mail to Trash** | **Yes**: you see which mails and press Accept (you can restore them from Trash) |
+| **Switch on your out-of-office reply** | **Yes**: you see the dates and the whole text and press Accept |
 | Delete anything for good, create public links, set up forwarding | **Never**: it can't do these at all |
 
 ## Getting started
@@ -92,6 +93,12 @@ The assistant can move mail between your folders. It can also move mail to **Tra
 > "Save the PDF from Anna's invoice mail into my files."
 
 Attachments are saved as new files, by default in your personal space.
+
+**Out of office**
+
+> "Set my out-of-office from 1 to 5 December: I'm away, Anna covers for me."
+
+The confirmation shows the dates and the whole text, because everyone who writes to you gets it, people outside the company too. Without an end date it says so on the first line. Switching it off needs no confirmation.
 
 **Sending**
 

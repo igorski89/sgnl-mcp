@@ -174,3 +174,23 @@ func TestCalendarChangeGuards(t *testing.T) {
 		}
 	}
 }
+
+func TestVacationOnlyWithFlag(t *testing.T) {
+	up := func(p map[string]any) map[string]any {
+		return map[string]any{"accountId": "A", "update": map[string]any{"singleton": p}}
+	}
+	if err := check(Call{Method: "VacationResponse/set", Vacation: true, Args: up(map[string]any{"isEnabled": true, "textBody": "x", "htmlBody": nil})}); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]Call{
+		"no flag":   {Method: "VacationResponse/set", Args: up(map[string]any{"isEnabled": false})},
+		"html":      {Method: "VacationResponse/set", Vacation: true, Args: up(map[string]any{"htmlBody": "<img src=x>"})},
+		"other key": {Method: "VacationResponse/set", Vacation: true, Args: up(map[string]any{"forwardTo": "x"})},
+		"create":    {Method: "VacationResponse/set", Vacation: true, Args: map[string]any{"accountId": "A", "create": map[string]any{"x": map[string]any{}}}},
+		"elsewhere": {Method: "Email/set", Vacation: true, Args: map[string]any{"accountId": "A"}},
+	} {
+		if err := check(c); err == nil {
+			t.Errorf("%s: allowed", name)
+		}
+	}
+}

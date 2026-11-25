@@ -27,6 +27,7 @@ const (
 	Contacts     = "urn:ietf:params:jmap:contacts"
 	Principals   = "urn:ietf:params:jmap:principals"
 	Availability = "urn:ietf:params:jmap:principals:availability"
+	Vacation     = "urn:ietf:params:jmap:vacationresponse"
 )
 
 var allowed = []string{
@@ -35,6 +36,37 @@ var allowed = []string{
 	"Calendar/get", "CalendarEvent/get", "CalendarEvent/query", "CalendarEvent/set",
 	"AddressBook/get", "ContactCard/get", "ContactCard/query",
 	"Principal/get", "Principal/query", "Principal/getAvailability",
+	"VacationResponse/get", "VacationResponse/set",
+}
+
+// vacationFields: what an out-of-office update may set (plain text only).
+var vacationFields = []string{"isEnabled", "fromDate", "toDate", "subject", "textBody", "htmlBody"}
+
+// checkVacation: VacationResponse/set only with Call.Vacation: an update
+// of the singleton, the known fields, never HTML.
+func checkVacation(call Call) error {
+	if !call.Vacation {
+		return fmt.Errorf("jmap: VacationResponse/set is not allowed outside out_of_office_set")
+	}
+	for k := range call.Args {
+		if k != "accountId" && k != "update" {
+			return fmt.Errorf("jmap: out-of-office: %s is not allowed", k)
+		}
+	}
+	up, _ := call.Args["update"].(map[string]any)
+	patch, _ := up["singleton"].(map[string]any)
+	if len(up) != 1 || len(patch) == 0 {
+		return fmt.Errorf("jmap: out-of-office: only an update of the singleton")
+	}
+	for k, v := range patch {
+		if !slices.Contains(vacationFields, k) {
+			return fmt.Errorf("jmap: out-of-office: %s can't be set", k)
+		}
+		if k == "htmlBody" && v != nil {
+			return fmt.Errorf("jmap: out-of-office: plain text only")
+		}
+	}
+	return nil
 }
 
 // checkSend: EmailSubmission/set as mail_send uses it, and nothing else.
@@ -164,6 +196,9 @@ type Call struct {
 	// Cancel: the only destroy of an event, for event_cancel after the
 	// person confirmed: exactly one id, nothing else.
 	Cancel bool
+	// Vacation: the out-of-office reply, for out_of_office_set (switching it
+	// on only after the person confirmed the dates and text).
+	Vacation bool
 }
 
 // rescheduleFields: what Reschedule may change.
@@ -248,6 +283,12 @@ func check(call Call) error {
 	}
 	if !strings.HasSuffix(call.Method, "/set") {
 		return nil
+	}
+	if call.Method == "VacationResponse/set" || call.Vacation {
+		if call.Method != "VacationResponse/set" {
+			return fmt.Errorf("jmap: vacation flag on %s", call.Method)
+		}
+		return checkVacation(call)
 	}
 	if call.Method == "CalendarEvent/set" && (call.Reply || call.Reschedule || call.Cancel) {
 		return checkCalendarChange(call)
