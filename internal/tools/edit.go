@@ -119,7 +119,14 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 	// clients fold the rest.
 	me, _ := auth.Person(ctx)
 	shown := shownPath(sp, p)
+	shared, err := t.Files.SharedWithOthers(ctx, tok, sp.Path, p)
+	if err != nil {
+		return nil, FileEditOut{}, err
+	}
 	first := fmt.Sprintf("Change your file %q: %s", shown, describe(in.Edits[0], 60))
+	if shared {
+		first = fmt.Sprintf("Change your SHARED file %q (others see the change): %s", shown, describe(in.Edits[0], 60))
+	}
 	if n := len(in.Edits); n > 1 {
 		first += fmt.Sprintf(", and %d more change(s)", n-1)
 	}
@@ -131,11 +138,6 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 			break
 		}
 		fmt.Fprintf(&b, "%d. %s\n", i+1, describe(e, 300))
-	}
-	if shared, err := t.Files.SharedWithOthers(ctx, tok, sp.Path, p); err != nil {
-		return nil, FileEditOut{}, err
-	} else if shared {
-		b.WriteString("\nThis file is SHARED with others: they will see the change.\n")
 	}
 	if t.outside.recent(me.Username) {
 		b.WriteString("\nWARNING: your assistant read email from outside the company in the last 30 minutes; make sure this is what you asked for.\n")

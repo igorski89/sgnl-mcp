@@ -35,6 +35,8 @@ type Tools struct {
 	// TrashDays: after how many days the mail server empties Trash (0:
 	// unknown); mail_trash tells the person.
 	TrashDays int
+	// FilesTrashDays: the same for the file app's trash bin (0: none).
+	FilesTrashDays int
 	// Probes: the instance's other apps (name → an API URL), for aud_check.
 	Probes map[string]string
 	Access Access // who may use the gateway
@@ -132,6 +134,12 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "A file's earlier versions (when, size). The file app keeps one each time a file changes."}, t.fileVersions)
 		add(t, s, &mcp.Tool{Name: "file_trash_list", Annotations: ro,
 			Description: "What is in a space's trash bin (default: your personal space): name, where it was, when it was deleted. " + untrustedNames}, t.fileTrashList)
+		add(t, s, &mcp.Tool{Name: "file_move", Annotations: wr,
+			Description: "Rename and/or move a file or folder within its space (never over an existing name). In your own unshared folders it just happens; where others see either place, the person is asked first."}, t.fileMove)
+		add(t, s, &mcp.Tool{Name: "file_trash", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
+			Description: "Move a file or folder to its space's trash bin. The person is always asked first (what, how much, whether others lose it). Restorable with file_restore or in the file app; nothing is deleted for good."}, t.fileTrash)
+		add(t, s, &mcp.Tool{Name: "file_restore", Annotations: wr,
+			Description: "Restore an item from a trash bin (id from file_trash_list) to where it was, never over something there now. Back into a place others see, the person is asked first."}, t.fileRestore)
 		add(t, s, &mcp.Tool{Name: "folder_create", Annotations: wr,
 			Description: "Create a new, empty folder (default: at the top of your personal space). In a project space or a folder shared with others the person is asked first."}, t.folderCreate)
 		add(t, s, &mcp.Tool{Name: "file_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},

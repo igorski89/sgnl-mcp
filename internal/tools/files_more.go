@@ -114,6 +114,7 @@ type FolderCreateIn struct {
 
 type FolderCreateOut struct {
 	Path string `json:"path"`
+	Name string `json:"name"`
 	Note string `json:"note"`
 }
 
@@ -156,7 +157,7 @@ func (t *Tools) folderCreate(ctx context.Context, req *mcp.CallToolRequest, in F
 	if seen != "" {
 		note = "Created, with the person's confirmation; others with access see it."
 	}
-	return nil, FolderCreateOut{p, note}, nil
+	return nil, FolderCreateOut{p, strings.TrimSpace(in.Name), note}, nil
 }
 
 // othersSee: "" when only the person sees what is written at folder;

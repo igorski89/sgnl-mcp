@@ -203,3 +203,110 @@ func (c *Client) Mkcol(ctx context.Context, token, folder, name string) (string,
 		return "", fmt.Errorf("files: create folder %d %.200s", resp.StatusCode, b)
 	}
 }
+
+// davItem: a file or folder path the write calls accept (not the trash
+// bin, no "..", no "?" or "#").
+func davItem(p string) bool {
+	return strings.HasPrefix(p, davPrefix) && !strings.HasPrefix(p, trashPrefix) && !strings.Contains(p, "..") && !strings.ContainsAny(p, "?#")
+}
+
+// Exists: whether something is at p.
+func (c *Client) Exists(ctx context.Context, token, p string) (bool, error) {
+	_, err := c.propfind(ctx, token, p, "0", `<d:resourcetype/>`)
+	if err == errNotFound {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// Move: src to dst (a new name and/or another folder of the same space),
+// never over something that exists (checked, and Overwrite: F).
+func (c *Client) Move(ctx context.Context, token, src, dst string) error {
+	if !davItem(src) || !davItem(dst) {
+		return fmt.Errorf("paths must come from folder_list or file_search")
+	}
+	if ex, err := c.Exists(ctx, token, strings.TrimSuffix(dst, "/")); err != nil {
+		return err
+	} else if ex {
+		return fmt.Errorf("something with that name already exists there")
+	}
+	resp, err := c.send(ctx, token, "MOVE", src, nil, map[string]string{"Destination": c.Base + dst, "Overwrite": "F"})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 201:
+		return nil
+	case 412, 204:
+		return fmt.Errorf("something with that name already exists there")
+	case 423:
+		return fmt.Errorf("it is locked (open for editing somewhere?): nothing was moved")
+	case 409:
+		return fmt.Errorf("the folder to move it into doesn't exist")
+	default:
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("files: move %d %.200s", resp.StatusCode, b)
+	}
+}
+
+// ToTrash: p into its space's trash bin (DELETE on a space path: OpenCloud
+// keeps it in the trash bin, restorable). Never the trash bin itself.
+func (c *Client) ToTrash(ctx context.Context, token, p string) error {
+	if !davItem(p) {
+		return fmt.Errorf("path must come from folder_list or file_search")
+	}
+	resp, err := c.send(ctx, token, "DELETE", p, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 204, 200:
+		return nil
+	case 423:
+		return fmt.Errorf("it is locked (open for editing somewhere?): nothing was moved to the trash")
+	case 404:
+		return fmt.Errorf("it isn't there (anymore)")
+	default:
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("files: trash %d %.200s", resp.StatusCode, b)
+	}
+}
+
+// Restore: a trash item back to where it was, never over something there.
+func (c *Client) Restore(ctx context.Context, token, spaceID, spacePath, id, location string) error {
+	if spaceID == "" || strings.ContainsAny(spaceID, "/?#") || id == "" || strings.ContainsAny(id, "/?#") || strings.Contains(location, "..") || location == "" {
+		return fmt.Errorf("files: bad trash item")
+	}
+	if !strings.HasSuffix(spacePath, "/") || !davItem(spacePath) {
+		return fmt.Errorf("files: bad space")
+	}
+	parts := strings.Split(strings.Trim(location, "/"), "/")
+	for i, x := range parts {
+		parts[i] = url.PathEscape(x)
+	}
+	dst := spacePath + strings.Join(parts, "/")
+	if ex, err := c.Exists(ctx, token, dst); err != nil {
+		return err
+	} else if ex {
+		return fmt.Errorf("something is at its old place again (%s): rename that first", location)
+	}
+	resp, err := c.send(ctx, token, "MOVE", trashPrefix+url.PathEscape(spaceID)+"/"+url.PathEscape(id), nil,
+		map[string]string{"Destination": c.Base + dst, "Overwrite": "F"})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 201, 204:
+		return nil
+	case 412:
+		return fmt.Errorf("something is at its old place again (%s): rename that first", location)
+	case 409:
+		return fmt.Errorf("the folder it was in is gone: restore that first")
+	default:
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("files: restore %d %.200s", resp.StatusCode, b)
+	}
+}

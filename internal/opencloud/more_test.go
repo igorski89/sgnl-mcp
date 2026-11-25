@@ -60,3 +60,58 @@ func TestSharedWithOthersWalksUp(t *testing.T) {
 		t.Fatal("the space's top reported shared")
 	}
 }
+
+func TestMoveTrashRestoreGuards(t *testing.T) {
+	var got []string
+	exists := map[string]bool{davPrefix + "p/taken.md": true, davPrefix + "p/back.md": true}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.URL.Path+" "+r.Header.Get("Overwrite"))
+		if r.Method == "PROPFIND" {
+			if !exists[r.URL.Path] {
+				w.WriteHeader(404)
+				return
+			}
+			w.WriteHeader(207)
+			fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:"/>`)
+			return
+		}
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	ctx := context.Background()
+	if err := c.Move(ctx, "t", davPrefix+"p/a.md", davPrefix+"p/taken.md"); err == nil {
+		t.Error("move over an existing name allowed")
+	}
+	if err := c.Move(ctx, "t", davPrefix+"p/a.md", davPrefix+"p/b.md"); err != nil {
+		t.Fatal(err)
+	}
+	if last := got[len(got)-1]; last != "MOVE "+davPrefix+"p/a.md F" {
+		t.Errorf("move sent: %q", last)
+	}
+	for _, bad := range []string{trashPrefix + "p/x", davPrefix + "p/../q/x", "/elsewhere"} {
+		if err := c.ToTrash(ctx, "t", bad); err == nil {
+			t.Errorf("trash of %s allowed", bad)
+		}
+		if err := c.Move(ctx, "t", bad, davPrefix+"p/z"); err == nil {
+			t.Errorf("move of %s allowed", bad)
+		}
+	}
+	if err := c.Restore(ctx, "t", "p", davPrefix+"p/", "k1", "back.md"); err == nil {
+		t.Error("restore over an existing file allowed")
+	}
+	if err := c.Restore(ctx, "t", "p", davPrefix+"p/", "k1", "../x"); err == nil {
+		t.Error("restore outside the space allowed")
+	}
+	if err := c.Restore(ctx, "t", "p", davPrefix+"p/", "k1", "Q4/gone.md"); err != nil {
+		t.Fatal(err)
+	}
+	if last := got[len(got)-1]; last != "MOVE "+trashPrefix+"p/k1 F" {
+		t.Errorf("restore sent: %q", last)
+	}
+	for _, g := range got {
+		if strings.HasPrefix(g, "DELETE "+trashPrefix) {
+			t.Fatalf("a DELETE reached the trash bin: %v", got)
+		}
+	}
+}

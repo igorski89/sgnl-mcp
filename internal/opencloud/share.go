@@ -181,6 +181,10 @@ func accessOf(roles []string) string {
 	return "other"
 }
 
+type identitySet struct {
+	User struct{ DisplayName string } `json:"user"`
+}
+
 type graphItem struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
@@ -188,9 +192,16 @@ type graphItem struct {
 	ParentReference struct {
 		DriveID string `json:"driveId"`
 	} `json:"parentReference"`
+	CreatedBy  identitySet `json:"createdBy"`
 	RemoteItem *struct {
-		Name   string    `json:"name"`
-		Folder *struct{} `json:"folder"`
+		Name        string      `json:"name"`
+		Folder      *struct{}   `json:"folder"`
+		CreatedBy   identitySet `json:"createdBy"`
+		Permissions []struct {
+			Invitation struct {
+				InvitedBy identitySet `json:"invitedBy"`
+			} `json:"invitation"`
+		} `json:"permissions"`
 		Shared struct {
 			SharedBy struct {
 				User struct{ DisplayName string } `json:"user"`
@@ -223,6 +234,17 @@ func (c *Client) SharedWithMe(ctx context.Context, token string) ([]Shared, erro
 			}
 			s.Folder = s.Folder || ri.Folder != nil
 			s.By = ri.Shared.SharedBy.User.DisplayName
+			for _, p := range ri.Permissions {
+				if s.By == "" {
+					s.By = p.Invitation.InvitedBy.User.DisplayName
+				}
+			}
+			if s.By == "" {
+				s.By = ri.CreatedBy.User.DisplayName // the owner
+			}
+		}
+		if s.By == "" {
+			s.By = it.CreatedBy.User.DisplayName
 		}
 		out = append(out, s)
 	}
