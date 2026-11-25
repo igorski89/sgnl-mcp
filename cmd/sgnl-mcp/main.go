@@ -23,6 +23,8 @@
 //	                        SGNL_MCP_ALLOW_ALL=1) it refuses to start unless on loopback
 //	SGNL_MCP_INTERNAL_DOMAINS  the company's mail domains (default: each person's own);
 //	                        other recipients are marked "outside" when sending
+//	SGNL_MCP_TRASH_DAYS     after how many days the mail server empties Trash (told
+//	                        to the person when mail goes to Trash; unset: not said)
 //	SGNL_MCP_CONFIRM_CLIENTS login client ids whose apps may ask the person to confirm
 //	                        (send, shared-space save); others can't do those. Unset: all
 //	SGNL_MCP_PROBES         for aud_check: other apps as name=URL, comma-separated
@@ -47,6 +49,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -168,6 +171,13 @@ func main() {
 	t.Access = access
 	t.InternalDomains = list("SGNL_MCP_INTERNAL_DOMAINS")
 	t.ConfirmClients = list("SGNL_MCP_CONFIRM_CLIENTS")
+	if d := os.Getenv("SGNL_MCP_TRASH_DAYS"); d != "" {
+		n, err := strconv.Atoi(d)
+		if err != nil || n < 1 {
+			log.Fatalf("sgnl-mcp: SGNL_MCP_TRASH_DAYS: a number of days, got %q", d)
+		}
+		t.TrashDays = n
+	}
 	t.Probes = map[string]string{}
 	for _, p := range list("SGNL_MCP_PROBES") {
 		if n, u, ok := strings.Cut(p, "="); ok {

@@ -55,6 +55,9 @@ func (t *Tools) eventInvite(ctx context.Context, req *mcp.CallToolRequest, in Ev
 	if len(who) > maxAttendees {
 		return nil, EventInviteOut{}, fmt.Errorf("at most %d attendees per event (got %d)", maxAttendees, len(who))
 	}
+	if _, end, err := t.window(calEvent{Start: fmt.Sprint(e["start"]), TimeZone: fmt.Sprint(e["timeZone"]), Duration: fmt.Sprint(e["duration"])}); err == nil && !end.After(time.Now()) {
+		return nil, EventInviteOut{}, fmt.Errorf("this meeting would be in the past: no invitations would be sent")
+	}
 	ps := map[string]any{}
 	for i, a := range who {
 		ps[fmt.Sprintf("a%d", i)] = map[string]any{"@type": "Participant", "email": a,

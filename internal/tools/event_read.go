@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/igorski89/sgnl-mcp/internal/auth"
 	"github.com/igorski89/sgnl-mcp/internal/jmap"
 	"github.com/igorski89/sgnl-mcp/internal/textx"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -138,7 +137,7 @@ func (t *Tools) eventRead(ctx context.Context, _ *mcp.CallToolRequest, in EventR
 	if err != nil {
 		return nil, EventReadOut{}, err
 	}
-	me, _ := auth.Person(ctx)
+	me, _ := personOf(ctx)
 	you, mine := e.role(me.Email)
 	out := EventReadOut{Note: untrustedEvent, ID: e.ID, Title: textx.Visible(e.Title), Start: e.Start, TimeZone: e.TimeZone,
 		Duration: e.Duration, AllDay: e.ShowWithoutTime, Status: e.Status, Repeats: e.repeats(), You: you}

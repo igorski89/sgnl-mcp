@@ -130,3 +130,47 @@ func TestInviteOnlyAsEventInvite(t *testing.T) {
 		t.Error("a replyTo from the gateway allowed")
 	}
 }
+
+// Answer, reschedule and cancel each pass only their own narrow shape.
+func TestCalendarChangeGuards(t *testing.T) {
+	up := func(patch map[string]any, send any) map[string]any {
+		a := map[string]any{"accountId": "A", "update": map[string]any{"e1": patch}}
+		if send != nil {
+			a["sendSchedulingMessages"] = send
+		}
+		return a
+	}
+	ok := []Call{
+		{Method: "CalendarEvent/set", Reply: true, Args: up(map[string]any{"participants/b/participationStatus": "declined"}, true)},
+		{Method: "CalendarEvent/set", Reschedule: true, Args: up(map[string]any{"start": "2026-12-03T11:00:00", "title": "x"}, true)},
+		{Method: "CalendarEvent/set", Cancel: true, Args: map[string]any{"accountId": "A", "destroy": []string{"e1"}, "sendSchedulingMessages": true}},
+		{Method: "CalendarEvent/set", Cancel: true, Args: map[string]any{"accountId": "A", "destroy": []string{"e1"}, "sendSchedulingMessages": false}},
+	}
+	for i, c := range ok {
+		if err := check(c); err != nil {
+			t.Errorf("ok %d: %v", i, err)
+		}
+	}
+	bad := map[string]Call{
+		"reply other field":    {Method: "CalendarEvent/set", Reply: true, Args: up(map[string]any{"participants/b/participationStatus": "declined", "title": "x"}, true)},
+		"reply other part":     {Method: "CalendarEvent/set", Reply: true, Args: up(map[string]any{"participants/b/email": "evil@x.example"}, true)},
+		"reply bad answer":     {Method: "CalendarEvent/set", Reply: true, Args: up(map[string]any{"participants/b/participationStatus": "delegated"}, true)},
+		"reply no send":        {Method: "CalendarEvent/set", Reply: true, Args: up(map[string]any{"participants/b/participationStatus": "declined"}, nil)},
+		"reply nested":         {Method: "CalendarEvent/set", Reply: true, Args: up(map[string]any{"participants/b/x/participationStatus": "declined"}, true)},
+		"resched attendees":    {Method: "CalendarEvent/set", Reschedule: true, Args: up(map[string]any{"participants": map[string]any{}}, true)},
+		"resched organizer":    {Method: "CalendarEvent/set", Reschedule: true, Args: up(map[string]any{"organizerCalendarAddress": "mailto:x@x"}, true)},
+		"resched two events":   {Method: "CalendarEvent/set", Reschedule: true, Args: map[string]any{"accountId": "A", "sendSchedulingMessages": true, "update": map[string]any{"e1": map[string]any{"title": "x"}, "e2": map[string]any{"title": "y"}}}},
+		"resched create":       {Method: "CalendarEvent/set", Reschedule: true, Args: map[string]any{"accountId": "A", "sendSchedulingMessages": true, "create": map[string]any{"e": map[string]any{}}}},
+		"cancel two":           {Method: "CalendarEvent/set", Cancel: true, Args: map[string]any{"accountId": "A", "destroy": []string{"e1", "e2"}}},
+		"cancel with update":   {Method: "CalendarEvent/set", Cancel: true, Args: map[string]any{"accountId": "A", "destroy": []string{"e1"}, "update": map[string]any{}}},
+		"two flags":            {Method: "CalendarEvent/set", Cancel: true, Reply: true, Args: map[string]any{"accountId": "A", "destroy": []string{"e1"}}},
+		"flag elsewhere":       {Method: "Email/set", Cancel: true, Args: map[string]any{"accountId": "A", "destroy": []string{"m1"}}},
+		"destroy without flag": {Method: "CalendarEvent/set", Args: map[string]any{"accountId": "A", "destroy": []string{"e1"}}},
+		"send without flag":    {Method: "CalendarEvent/set", Args: up(map[string]any{"title": "x"}, true)},
+	}
+	for name, c := range bad {
+		if err := check(c); err == nil {
+			t.Errorf("%s: allowed", name)
+		}
+	}
+}

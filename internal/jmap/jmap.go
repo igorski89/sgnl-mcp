@@ -153,6 +153,89 @@ type Call struct {
 	// attendees each only at their own email (calendarAddress mailto:), and sendSchedulingMessages, so
 	// the mail server adds the person as organizer and sends the invitations.
 	Invite bool
+	// Reply: the only update of a participant, for event_respond after the
+	// person confirmed: one event, only participants/<id>/participationStatus,
+	// with sendSchedulingMessages (the mail server mails the organizer).
+	Reply bool
+	// Reschedule: an update of the person's own meeting after they
+	// confirmed: one event, only time, title, place and text (never
+	// participants), with sendSchedulingMessages (attendees get the update).
+	Reschedule bool
+	// Cancel: the only destroy of an event, for event_cancel after the
+	// person confirmed: exactly one id, nothing else.
+	Cancel bool
+}
+
+// rescheduleFields: what Reschedule may change.
+var rescheduleFields = []string{"title", "start", "duration", "timeZone", "showWithoutTime", "locations", "description"}
+
+var answers = []string{"accepted", "declined", "tentative"}
+
+// checkCalendarChange: see Call.Reply, Call.Reschedule, Call.Cancel.
+func checkCalendarChange(call Call) error {
+	n := 0
+	for _, f := range []bool{call.Invite, call.Reply, call.Reschedule, call.Cancel} {
+		if f {
+			n++
+		}
+	}
+	if n > 1 {
+		return fmt.Errorf("jmap: one kind of calendar change per call")
+	}
+	args := []string{"accountId", "sendSchedulingMessages"}
+	switch {
+	case call.Cancel:
+		args = append(args, "destroy")
+	default:
+		args = append(args, "update")
+	}
+	for k := range call.Args {
+		if !slices.Contains(args, k) {
+			return fmt.Errorf("jmap: %s is not allowed here", k)
+		}
+	}
+	if call.Cancel {
+		ids, _ := call.Args["destroy"].([]string)
+		if len(ids) != 1 || ids[0] == "" {
+			return fmt.Errorf("jmap: cancel: exactly one event")
+		}
+		if v, ok := call.Args["sendSchedulingMessages"]; ok {
+			if _, isBool := v.(bool); !isBool {
+				return fmt.Errorf("jmap: cancel: sendSchedulingMessages must be true or false")
+			}
+		}
+		return nil
+	}
+	if call.Args["sendSchedulingMessages"] != true {
+		return fmt.Errorf("jmap: without sendSchedulingMessages")
+	}
+	up, _ := call.Args["update"].(map[string]any)
+	if len(up) != 1 {
+		return fmt.Errorf("jmap: exactly one event")
+	}
+	for _, pv := range up {
+		patch, _ := pv.(map[string]any)
+		if len(patch) == 0 {
+			return fmt.Errorf("jmap: nothing to change")
+		}
+		for k, v := range patch {
+			if call.Reply {
+				id, ok := strings.CutPrefix(k, "participants/")
+				id, ok2 := strings.CutSuffix(id, "/participationStatus")
+				if !ok || !ok2 || id == "" || strings.Contains(id, "/") || len(patch) != 1 {
+					return fmt.Errorf("jmap: reply: only one participationStatus")
+				}
+				if a, _ := v.(string); !slices.Contains(answers, a) {
+					return fmt.Errorf("jmap: reply: %v is not an answer", v)
+				}
+				continue
+			}
+			if !slices.Contains(rescheduleFields, k) {
+				return fmt.Errorf("jmap: reschedule: %s can't be changed", k)
+			}
+		}
+	}
+	return nil
 }
 
 // check enforces the limits above on one call.
@@ -165,6 +248,12 @@ func check(call Call) error {
 	}
 	if !strings.HasSuffix(call.Method, "/set") {
 		return nil
+	}
+	if call.Method == "CalendarEvent/set" && (call.Reply || call.Reschedule || call.Cancel) {
+		return checkCalendarChange(call)
+	}
+	if call.Reply || call.Reschedule || call.Cancel {
+		return fmt.Errorf("jmap: calendar change flag on %s", call.Method)
 	}
 	if d, ok := call.Args["destroy"]; ok && d != nil {
 		if call.Method != "Email/set" || !call.DestroyDraft {

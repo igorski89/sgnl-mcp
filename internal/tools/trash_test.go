@@ -52,6 +52,9 @@ func TestTrashOnlyWithThePersonsYes(t *testing.T) {
 	if !strings.Contains(first, "Move 2 mail(s) to Trash") || !strings.Contains(first, `"Newsletter" from news@x.example`) {
 		t.Errorf("first line: %q", first)
 	}
+	if !strings.Contains(asked, "restore them from Trash in your mail app.") {
+		t.Errorf("restore hint: %q", asked)
+	}
 
 	m2 := newFakeMail()
 	m2.list = mails

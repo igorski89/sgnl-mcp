@@ -32,6 +32,9 @@ type Tools struct {
 	// trusted to show a confirmation to the person rather than answer it
 	// themselves; others can't send or save to shared spaces. Empty: all.
 	ConfirmClients []string
+	// TrashDays: after how many days the mail server empties Trash (0:
+	// unknown); mail_trash tells the person.
+	TrashDays int
 	// Probes: the instance's other apps (name → an API URL), for aud_check.
 	Probes map[string]string
 	Access Access // who may use the gateway
@@ -91,6 +94,12 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). No one is invited: for a meeting with others use event_invite."}, t.eventCreate)
 	add(t, s, &mcp.Tool{Name: "event_invite", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 		Description: "Create a meeting in your calendar and invite people to it: they get an invitation by email. The person is asked in their app first, with every attendee shown; nothing is created or sent without their yes. Check free times first with availability_get."}, t.eventInvite)
+	add(t, s, &mcp.Tool{Name: "event_respond", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
+		Description: "Answer an invitation: accept, decline or maybe. The person is asked in their app first; the organizer then gets the answer by email. Not for repeating events yet."}, t.eventRespond)
+	add(t, s, &mcp.Tool{Name: "event_update", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
+		Description: "Change an event you own: title, time, length, place, description (never who is invited). A private event changes right away; for a meeting you organize the person is asked first and the attendees get the update by email. Not for repeating events yet."}, t.eventUpdate)
+	add(t, s, &mcp.Tool{Name: "event_cancel", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
+		Description: "Cancel a meeting you organize (attendees get a cancellation by email) or delete a private event. The person is always asked first. To decline someone else's meeting use event_respond. Not for repeating events yet."}, t.eventCancel)
 	add(t, s, &mcp.Tool{Name: "availability_get", Annotations: ro,
 		Description: "When colleagues are busy (free/busy only, never what their events are), e.g. to find a common free slot. Times in UTC."}, t.availabilityGet)
 

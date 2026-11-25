@@ -80,7 +80,11 @@ func (t *Tools) mailTrash(ctx context.Context, req *mcp.CallToolRequest, in Mail
 	for _, e := range move {
 		b.WriteString("- " + oneLine(e.ReceivedAt, 20) + "  " + line(e, 120) + "\n")
 	}
-	b.WriteString("\nYou can restore them from Trash in your mail app.\n")
+	if t.TrashDays > 0 {
+		fmt.Fprintf(&b, "\nYou can restore them from Trash in your mail app for %d days; then the mail server deletes them.\n", t.TrashDays)
+	} else {
+		b.WriteString("\nYou can restore them from Trash in your mail app.\n")
+	}
 	bind := make([]string, len(move))
 	for i, e := range move {
 		bind[i] = e.ID

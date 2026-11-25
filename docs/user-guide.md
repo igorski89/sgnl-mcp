@@ -134,7 +134,13 @@ The first line always names the subject, the recipients and any attachments (som
 
 > "Set up a 30-minute meeting with Hugo on Thursday at 10 about the Q4 review."
 
-Private entries stay private. When you ask for a meeting with others, the assistant shows a confirmation first, like for sending email: the first line names the people, the title and the time, and marks anyone outside the company. After Accept, the event is in your calendar and the others get an invitation by email. For colleagues it sees only *when* they're busy, never what their meetings are.
+> "Accept the invitation to Thursday's Q4 review."
+>
+> "Move my 3 pm meeting with Hugo to 4 pm."
+>
+> "Cancel tomorrow's team lunch."
+
+Private entries stay private. When you ask for a meeting with others, the assistant shows a confirmation first, like for sending email: the first line names the people, the title and the time, and marks anyone outside the company. After Accept, the event is in your calendar and the others get an invitation by email. For colleagues it sees only *when* they're busy, never what their meetings are. Answering an invitation, moving or cancelling a meeting you organize, and deleting a private entry also show a confirmation first: the first line says what happens and who gets an email. Repeating events can't be changed through the assistant yet; use your calendar app.
 
 ### Contacts
 
