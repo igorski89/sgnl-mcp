@@ -71,6 +71,8 @@ The assistant can read attachments in PDF, Word, CSV and plain-text formats.
 >
 > "Shorten that draft and add Ben in Cc."
 >
+> "Attach the Q4 report from my files to that draft."
+>
 > "Forward the offer to Ben with a short note."
 
 Drafts land in your **Drafts** folder. You can review them there, edit them in your mail app, or ask the assistant to change them.
@@ -179,7 +181,6 @@ In an app that can't show confirmations, the assistant tells you it can't send. 
 ## Limits
 
 - The assistant can send a few emails per minute and to at most 50 recipients per email.
-- Drafts that have attachments can't be changed by the assistant: edit them in your mail app.
 - Very long mails and files are shortened when the assistant reads them.
 - If you work very fast, the assistant may ask you to wait a moment.
 

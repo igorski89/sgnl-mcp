@@ -87,6 +87,7 @@ func checkSend(call Call) error {
 type Session struct {
 	APIURL          string            `json:"apiUrl"`
 	DownloadURL     string            `json:"downloadUrl"`
+	UploadURL       string            `json:"uploadUrl"`
 	Capabilities    map[string]any    `json:"capabilities"`
 	PrimaryAccounts map[string]string `json:"primaryAccounts"`
 }
@@ -259,6 +260,37 @@ func (c *Client) Download(ctx context.Context, token string, s *Session, account
 		return b[:max], true, err
 	}
 	return b, false, err
+}
+
+// Upload stores data as a blob in the account (RFC 8620 §6.1) and returns
+// its id, for attaching it to a draft.
+func (c *Client) Upload(ctx context.Context, token string, s *Session, accountID, typ string, data []byte) (string, error) {
+	if s.UploadURL == "" {
+		return "", fmt.Errorf("mail server: no upload URL")
+	}
+	u := strings.ReplaceAll(s.UploadURL, "{accountId}", accountID)
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", typ)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		return "", fmt.Errorf("mail server: upload %d %.200s", resp.StatusCode, b)
+	}
+	var r struct {
+		BlobID string `json:"blobId"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil || r.BlobID == "" {
+		return "", fmt.Errorf("mail server: upload gave no blob id")
+	}
+	return r.BlobID, nil
 }
 
 // Ref: a back-reference to an earlier call's result (by index).

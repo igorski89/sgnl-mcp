@@ -60,11 +60,15 @@ func TestDraftUpdateNeverLosesContent(t *testing.T) {
 		t.Errorf("plain draft refused: %v", err)
 	}
 	withAtt := body("short", false)
-	withAtt.Attachments = []part{{Name: "a.pdf"}}
-	for _, nb := range []bool{false, true} {
-		if replaceable(withAtt, nb) == nil {
-			t.Errorf("draft with attachments allowed (new body %v)", nb)
-		}
+	withAtt.Attachments = []part{{Name: "a.pdf", BlobID: "B1", Type: "application/pdf"}}
+	if err := replaceable(withAtt, false); err != nil {
+		t.Errorf("draft with attachments refused (they are carried over): %v", err)
+	}
+	// ...and the new draft carries them, by blob id.
+	e := draftEmail(draft{subject: "s", body: "b", attachments: withAtt.Attachments}, "dr", address{Email: "me@co.example"})
+	atts, _ := e["attachments"].([]map[string]any)
+	if len(atts) != 1 || atts[0]["blobId"] != "B1" || atts[0]["name"] != "a.pdf" || atts[0]["disposition"] != "attachment" {
+		t.Errorf("attachments not carried: %v", e["attachments"])
 	}
 	long := body("cut", true)
 	if replaceable(long, false) == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -482,14 +483,15 @@ func (t *Tools) mailboxList(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 // ---- mail_draft_create / mail_draft_update (never sends)
 
 type DraftIn struct {
-	To        []string `json:"to,omitempty" jsonschema:"recipients (address or Name <address>); for a reply defaults to the sender"`
-	Cc        []string `json:"cc,omitempty"`
-	Bcc       []string `json:"bcc,omitempty" jsonschema:"hidden recipients"`
-	Subject   string   `json:"subject,omitempty" jsonschema:"for a reply/forward defaults to Re:/Fwd: of the original"`
-	Body      string   `json:"body" jsonschema:"plain text"`
-	ReplyTo   string   `json:"reply_to,omitempty" jsonschema:"message id to reply to (quotes it, threads the reply)"`
-	ReplyAll  bool     `json:"reply_all,omitempty" jsonschema:"with reply_to: also the original's other recipients"`
-	ForwardOf string   `json:"forward_of,omitempty" jsonschema:"message id to forward (its text is included)"`
+	To          []string `json:"to,omitempty" jsonschema:"recipients (address or Name <address>); for a reply defaults to the sender"`
+	Cc          []string `json:"cc,omitempty"`
+	Bcc         []string `json:"bcc,omitempty" jsonschema:"hidden recipients"`
+	Subject     string   `json:"subject,omitempty" jsonschema:"for a reply/forward defaults to Re:/Fwd: of the original"`
+	Body        string   `json:"body" jsonschema:"plain text"`
+	ReplyTo     string   `json:"reply_to,omitempty" jsonschema:"message id to reply to (quotes it, threads the reply)"`
+	ReplyAll    bool     `json:"reply_all,omitempty" jsonschema:"with reply_to: also the original's other recipients"`
+	AttachFiles []string `json:"attach_files,omitempty" jsonschema:"files to attach (paths from file_search or folder_list)"`
+	ForwardOf   string   `json:"forward_of,omitempty" jsonschema:"message id to forward (its text is included)"`
 }
 
 type DraftOut struct {
@@ -544,6 +546,9 @@ func (t *Tools) mailDraftCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 				"\nDate: " + o.ReceivedAt + "\nSubject: " + o.Subject + "\nTo: " + addrs(o.To) + "\n\n" + toMessage(o, 6000).Text
 		}
 	}
+	if err := t.attachFiles(ctx, tok, s, acct, &d, in.AttachFiles); err != nil {
+		return nil, DraftOut{}, err
+	}
 	id, err := t.saveDraft(ctx, tok, s, acct, d, "")
 	if err != nil {
 		return nil, DraftOut{}, err
@@ -558,6 +563,9 @@ type DraftUpdateIn struct {
 	Bcc     []string `json:"bcc,omitempty" jsonschema:"replaces the hidden recipients if given (empty list: none)"`
 	Subject string   `json:"subject,omitempty" jsonschema:"changing a reply's subject moves it out of its conversation"`
 	Body    string   `json:"body,omitempty" jsonschema:"replaces the whole text if given"`
+	// Attachments are kept unless removed here.
+	RemoveAttachments []string `json:"remove_attachments,omitempty" jsonschema:"names of attachments to take off"`
+	AttachFiles       []string `json:"attach_files,omitempty" jsonschema:"files to attach (paths from file_search or folder_list)"`
 }
 
 func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in DraftUpdateIn) (*mcp.CallToolResult, DraftOut, error) {
@@ -581,7 +589,18 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err := replaceable(o, in.Body != ""); err != nil {
 		return nil, DraftOut{}, err
 	}
-	d := draft{to: o.To, cc: o.Cc, bcc: o.Bcc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: o.InReplyTo, references: o.References}
+	d := draft{to: o.To, cc: o.Cc, bcc: o.Bcc, subject: o.Subject, body: toMessage(o, maxBody).Text, inReplyTo: o.InReplyTo, references: o.References,
+		attachments: o.Attachments}
+	for _, n := range in.RemoveAttachments {
+		i := slices.IndexFunc(d.attachments, func(a part) bool { return a.Name == n })
+		if i < 0 {
+			return nil, DraftOut{}, fmt.Errorf("the draft has no attachment named %q", n)
+		}
+		d.attachments = slices.Delete(slices.Clone(d.attachments), i, i+1)
+	}
+	if err := t.attachFiles(ctx, tok, s, acct, &d, in.AttachFiles); err != nil {
+		return nil, DraftOut{}, err
+	}
 	if in.To != nil {
 		d.to = toAddrs(in.To)
 	}
@@ -605,14 +624,53 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	return nil, DraftOut{id, addrs(d.to), d.subject, draftNote}, nil
 }
 
-// replaceable: whether a draft can be re-created without losing anything.
-// The new copy carries only recipients, subject and plain text, so a draft
-// with attachments, or one too long to read back whole (unless the text is
-// being replaced), is refused rather than replaced with less.
-func replaceable(o emailFull, newBody bool) error {
-	if len(o.Attachments) > 0 {
-		return fmt.Errorf("this draft has attachments, which an update would drop: change it in the mail app instead")
+// maxAttach: the most a draft's attached files may add up to.
+const maxAttach = 20 << 20
+
+// attachFiles: downloads each file from OpenCloud (as the person) and
+// uploads it to the mail server as a blob of the draft.
+func (t *Tools) attachFiles(ctx context.Context, tok string, s *jmap.Session, acct string, d *draft, paths []string) error {
+	if len(paths) == 0 {
+		return nil
 	}
+	if t.Files == nil {
+		return fmt.Errorf("files aren't connected here, so nothing can be attached")
+	}
+	ftok, err := t.Auth.FilesToken(ctx)
+	if err != nil {
+		return err
+	}
+	total := 0
+	for _, a := range d.attachments {
+		total += a.Size
+	}
+	for _, p := range paths {
+		data, ctype, truncated, err := t.Files.Download(ctx, ftok, p, maxAttach)
+		if err != nil {
+			return fmt.Errorf("%s: %v", p, err)
+		}
+		total += len(data)
+		if truncated || total > maxAttach {
+			return fmt.Errorf("attachments may add up to at most %d MB: %s doesn't fit", maxAttach>>20, path.Base(p))
+		}
+		if ctype == "" {
+			ctype = "application/octet-stream"
+		}
+		ctype, _, _ = strings.Cut(ctype, ";")
+		blob, err := t.JMAP.Upload(ctx, tok, s, acct, ctype, data)
+		if err != nil {
+			return err
+		}
+		d.attachments = append(d.attachments, part{BlobID: blob, Type: ctype, Name: path.Base(p), Size: len(data)})
+	}
+	return nil
+}
+
+// replaceable: whether a draft can be re-created without losing anything.
+// The new copy carries recipients, subject, plain text and the attachments
+// (by blob id), so a draft too long to read back whole (unless the text is
+// being replaced) is refused rather than replaced with less.
+func replaceable(o emailFull, newBody bool) error {
 	if !newBody && toMessage(o, maxBody).Truncated {
 		return fmt.Errorf("this draft is too long to copy whole: give the full new body, or change it in the mail app")
 	}
@@ -623,6 +681,7 @@ type draft struct {
 	to, cc, bcc           []address
 	subject, body         string
 	inReplyTo, references []string
+	attachments           []part // by blob id: kept from the old draft, or uploaded
 }
 
 func prefixed(p, s string) string {
@@ -704,6 +763,13 @@ func draftEmail(d draft, draftsID string, from address) map[string]any {
 		if len(v) > 0 {
 			e[k] = v
 		}
+	}
+	if len(d.attachments) > 0 {
+		atts := make([]map[string]any, len(d.attachments))
+		for i, a := range d.attachments {
+			atts[i] = map[string]any{"blobId": a.BlobID, "type": a.Type, "name": a.Name, "disposition": "attachment"}
+		}
+		e["attachments"] = atts
 	}
 	return e
 }
