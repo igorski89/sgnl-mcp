@@ -1,7 +1,8 @@
 // Package opencloud: a minimal OpenCloud client: search (REPORT
 // oc:search-files), folder listing (PROPFIND), spaces (Graph, GET),
-// download (GET) and saving NEW files (PUT with If-None-Match: *, so an
-// existing file is never overwritten). No other method can be sent.
+// download (GET), saving NEW files (PUT with If-None-Match: *) and, only
+// through Overwrite (edit.go), changing a file at the version it was read
+// at. No other method can be sent.
 package opencloud
 
 import (

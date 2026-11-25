@@ -38,6 +38,7 @@ needs your click, staying safe).
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
 | `file_share` | files (OpenCloud) | share a file or folder in the personal space with one colleague (view/edit), **only after the person confirms**; no links |
 | `file_save` | files (OpenCloud) | a new text file, never overwriting; **shared spaces need a confirmation** |
+| `file_edit` | files (OpenCloud) | change a text file in the personal space (exact replacements or an append), **only after the person confirms**, and only if the file is still the version shown |
 
 ## Admin endpoint
 
@@ -127,8 +128,13 @@ only on loopback.
 - Calendar: events with attendees (which send invitations) only through
   `event_invite`, after the person confirms; the mail server makes the
   person the organizer, the gateway can't set organizer or reply address.
-- Files: only new files; saving into a shared space needs the person's
-  confirmation. Sharing: one colleague at a time, from the personal space,
+- Files: `file_save` only makes new files; saving into a shared space
+  needs the person's confirmation. `file_edit` changes a text file in the
+  personal space after the person confirms the changes shown; the gateway
+  applies exact replacements to the whole file as it is on the server
+  (larger than 2 MB is refused, never cut), and writes only with If-Match
+  on the version shown (`Overwrite` is the client's only way to replace a
+  file). No deleting, renaming or moving. Sharing: one colleague at a time, from the personal space,
   view or edit, after the person confirms; the client's only POST is that
   invite (no public links, no unsharing).
 - Confirmations are asked of the person through MCP elicitation and bound

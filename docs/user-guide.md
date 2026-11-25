@@ -13,6 +13,7 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | Put private entries in your calendar | No |
 | **Invite people to a meeting** | **Yes**: you see a confirmation and press Accept |
 | Save new files in your personal space | No |
+| **Change a text file in your personal space** | **Yes**: you see the changes and press Accept |
 | **Send an email** | **Yes**: you see a confirmation and press Accept |
 | **Share a file or folder with a colleague** | **Yes**: you see a confirmation and press Accept |
 | **Save a file into a shared space** | **Yes**: you see a confirmation and press Accept |
@@ -150,7 +151,11 @@ The assistant searches your address book and the company directory.
 
 Sharing works for files and folders in your personal space, with one colleague at a time, for viewing (the default) or editing. The confirmation's first line says what (FILE or FOLDER), with whom, and whether they can change it. Public links ("anyone with the link") can't be made through the assistant. To stop sharing, use your file app.
 
-The assistant creates **new** text files only: it never overwrites or deletes an existing file. Saving into a **shared** space shows a confirmation first, the same way sending does, because your colleagues will see the file.
+> "Add today's decisions to the end of notes.md."
+>
+> "In my packing list, change 'two shirts' to 'three shirts'."
+
+The assistant can save **new** text files, and change text files (Markdown, plain text, CSV, JSON, YAML) in your **personal** space. Before a change is written, a confirmation shows the file and each change (what is replaced, removed or added). If the file changed in the meantime, for example because you edited it yourself, nothing is written and the assistant has to read it again. It never deletes, renames or moves files, and it can't change files in shared spaces or documents like Word or PDF. Saving a new file into a **shared** space shows a confirmation first, the same way sending does, because your colleagues will see the file.
 
 ### Putting it together
 

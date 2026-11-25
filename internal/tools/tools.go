@@ -102,6 +102,8 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Share a file or folder from your personal space with one colleague (view, or edit). The person is asked in their app first, with what, whom and the access shown; nothing is shared without their yes. No public links."}, t.fileShare)
 		add(t, s, &mcp.Tool{Name: "file_save", Annotations: wr,
 			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file. In the personal space it is private; in a shared (project) space the person is asked to confirm first, because others will see it."}, t.fileSave)
+		add(t, s, &mcp.Tool{Name: "file_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
+			Description: "Change a text file (.md, .txt, .csv, .json, .yaml) in your personal space: exact replacements (old_text must occur exactly once) or one append, applied to the file as it is now. The person is asked in their app first, with the changes shown; nothing is written without their yes, and not if the file changed meanwhile. To make a new file use file_save."}, t.fileEdit)
 	}
 	if t.Experiments["audcheck"] {
 		add(t, s, &mcp.Tool{Name: "aud_check", Annotations: ro,
