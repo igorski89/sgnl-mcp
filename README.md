@@ -36,8 +36,8 @@ needs your click, staying safe).
 | `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
 | `event_create` | calendar (JMAP) | a private event, no participants |
 | `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |
-| `event_import` | mail → calendar | add an invitation received by mail (e.g. from outside) to the calendar, **only after the person confirms**; mails no one |
-| `event_respond` | calendar (JMAP) | answer an invitation (accept/decline/maybe); the organizer is mailed, **only after the person confirms** |
+| `event_import` | mail → calendar | (experiment `invites` until live-tested) add an invitation received by mail (e.g. from outside) to the calendar, **only after the person confirms**; mails no one |
+| `event_respond` | calendar (JMAP) | (experiment `invites` until live-tested) answer an invitation (accept/decline/maybe); the organizer is mailed, **only after the person confirms** |
 | `event_update` | calendar (JMAP) | change time, title, place or text of the person's own event; for a meeting **only after the person confirms**, attendees get the update |
 | `event_cancel` | calendar (JMAP) | cancel a meeting the person organizes (attendees get a cancellation) or delete a private event, **only after the person confirms** |
 | `availability_get` | calendar (JMAP) | colleagues' free/busy |

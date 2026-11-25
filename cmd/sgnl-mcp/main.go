@@ -17,7 +17,8 @@
 //	                        are asked for with this audience (unset: the issuer's default)
 //	SGNL_MCP_FILES_AUDIENCE the same for OpenCloud
 //	SGNL_MCP_TZ             the instance's time zone (IANA, default UTC): "today", new events
-//	SGNL_MCP_EXPERIMENTS    comma-separated experiments to switch on (confirm, audcheck)
+//	SGNL_MCP_EXPERIMENTS    comma-separated experiments to switch on (confirm, audcheck, invites:
+//	                        event_respond and event_import before their live test)
 //	SGNL_MCP_ALLOW_USERS    who may use it: usernames or email addresses, comma-separated
 //	SGNL_MCP_ALLOW_GROUPS   ... or members of any of these groups; with neither (and not
 //	                        SGNL_MCP_ALLOW_ALL=1) it refuses to start unless on loopback

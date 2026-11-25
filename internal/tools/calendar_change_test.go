@@ -134,3 +134,11 @@ func TestAttendeeCantCancelOrChange(t *testing.T) {
 		}
 	}
 }
+
+func TestDurText(t *testing.T) {
+	for in, want := range map[string]string{"PT30M": "30 min", "PT1H30M": "1 h 30 min", "P1D": "1 day", "P2D": "2 days", "P1W": "1 week", "x": "x"} {
+		if got := durText(in); got != want {
+			t.Errorf("%s: %q", in, got)
+		}
+	}
+}

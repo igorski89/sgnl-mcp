@@ -80,3 +80,23 @@ func TestTrashOnlyWithThePersonsYes(t *testing.T) {
 		t.Error("too many: not refused")
 	}
 }
+
+func TestTrashSaysRetention(t *testing.T) {
+	m := newFakeMail()
+	m.list = []any{map[string]any{"id": "m1", "subject": "x", "mailboxIds": map[string]bool{"in": true}}}
+	srv := m.serve(t)
+	s := mcp.NewServer(&mcp.Implementation{Name: "t"}, nil)
+	(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(srv.URL + "/session"), Access: Access{All: true}, TrashDays: 30}).Register(s)
+	ct, st := mcp.NewInMemoryTransports()
+	s.Connect(context.Background(), st, nil)
+	var asked string
+	cs, _ := mcp.NewClient(&mcp.Implementation{Name: "c"}, &mcp.ClientOptions{ElicitationHandler: func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = r.Params.Message
+		return &mcp.ElicitResult{Action: "decline"}, nil
+	}}).Connect(context.Background(), ct, nil)
+	defer cs.Close()
+	cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "mail_trash", Arguments: map[string]any{"ids": []string{"m1"}}})
+	if !strings.Contains(asked, "for 30 days; then the mail server deletes them") {
+		t.Fatalf("retention not said: %q", asked)
+	}
+}

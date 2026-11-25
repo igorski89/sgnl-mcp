@@ -200,7 +200,7 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		patch["start"] = newStart.Format("2006-01-02T15:04:05")
 		patch["showWithoutTime"] = allDay
 		patch["duration"] = dur
-		changes = append(changes, fmt.Sprintf("time %s → %s (%s)", whenText(oldStart, e.ShowWithoutTime), whenText(newStart, allDay), strings.ToLower(strings.TrimPrefix(dur, "P"))))
+		changes = append(changes, fmt.Sprintf("time %s → %s (%s)", whenText(oldStart, e.ShowWithoutTime), whenText(newStart, allDay), durText(dur)))
 	}
 	if in.Location != nil {
 		patch["locations"] = map[string]any{"l": map[string]string{"@type": "Location", "name": *in.Location}}
@@ -333,3 +333,29 @@ func (t *Tools) eventCancel(ctx context.Context, req *mcp.CallToolRequest, in Ev
 
 // personOf: who is asking (a variable so tests can be someone).
 var personOf = auth.Person
+
+// durText: an ISO duration as people say it ("30 min", "1 h 30 min", "2 days").
+func durText(d string) string {
+	m := reDur.FindStringSubmatch(d)
+	if m == nil {
+		return d
+	}
+	var parts []string
+	for i, unit := range []string{"week", "day", "h", "min", "s"} {
+		n, _ := strconv.Atoi(m[i+1])
+		if n == 0 {
+			continue
+		}
+		switch {
+		case unit == "week" || unit == "day":
+			if n > 1 {
+				unit += "s"
+			}
+		}
+		parts = append(parts, fmt.Sprintf("%d %s", n, unit))
+	}
+	if len(parts) == 0 {
+		return "0 min"
+	}
+	return strings.Join(parts, " ")
+}
