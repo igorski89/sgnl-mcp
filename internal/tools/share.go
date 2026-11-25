@@ -17,7 +17,7 @@ import (
 // person's own space, only after the person confirms. No public links.
 
 type FileShareIn struct {
-	Path   string `json:"path" jsonschema:"the file or folder (path from file_search or folder_list), in your personal space"`
+	Path   string `json:"path" jsonschema:"the file or folder in your personal space: a path from file_search or folder_list, or a short one like /Q4/report.pdf"`
 	With   string `json:"with" jsonschema:"the colleague: their email, username or name"`
 	Access string `json:"access,omitempty" jsonschema:"view (default) or edit"`
 }
@@ -52,7 +52,10 @@ func (t *Tools) fileShare(ctx context.Context, req *mcp.CallToolRequest, in File
 	if err != nil {
 		return nil, FileShareOut{}, err
 	}
-	if sp := spaceOf(spaces, in.Path); sp == nil || sp.Type != "personal" {
+	in.Path = personalPath(spaces, strings.TrimSpace(in.Path))
+	if sp := spaceOf(spaces, in.Path); sp == nil {
+		return nil, FileShareOut{}, fmt.Errorf("path %q not recognised: use a path from file_search or folder_list", oneLine(in.Path, 200))
+	} else if sp.Type != "personal" {
 		return nil, FileShareOut{}, fmt.Errorf("only files and folders in your personal space can be shared here; for a project space, ask its manager")
 	}
 	it, err := t.Files.Item(ctx, tok, in.Path)
@@ -133,4 +136,19 @@ func (t *Tools) fileShare(ctx context.Context, req *mcp.CallToolRequest, in File
 	}
 	slog.Info("shared", "user", me.Username, "folder", it.Folder, "access", access)
 	return nil, FileShareOut{Shared: name, With: who, Access: access, Note: "Shared. They find it under \"Shared with me\"."}, nil
+}
+
+// personalPath: a short path ("/notes.md", "Q4/report.pdf") is taken as
+// inside the personal space (live test: the assistant used one); a path
+// that already names a space is kept.
+func personalPath(spaces []opencloud.Space, p string) string {
+	if p == "" || spaceOf(spaces, p) != nil || strings.HasPrefix(p, "/remote.php/") {
+		return p
+	}
+	for _, sp := range spaces {
+		if sp.Type == "personal" {
+			return sp.Path + strings.TrimPrefix(p, "/")
+		}
+	}
+	return p
 }

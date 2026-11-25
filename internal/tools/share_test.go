@@ -131,6 +131,7 @@ func TestShareRefusals(t *testing.T) {
 		"too short":     {"/remote.php/dav/spaces/p/x.md", "hu", ""},
 		"bad access":    {"/remote.php/dav/spaces/p/x.md", "hugo", "own"},
 		"not a path":    {"../etc", "hugo", ""},
+		"unknown space": {"/remote.php/dav/spaces/zz/x.md", "hugo", ""},
 	} {
 		if r := share(t, cs, c[0], c[1], c[2]); !r.IsError {
 			t.Errorf("%s: not refused (%q)", name, resultText(r))
@@ -146,6 +147,25 @@ func TestShareRefusals(t *testing.T) {
 	})
 	if r := share(t, cs, "/remote.php/dav/spaces/p/x.md", "hugoo", ""); r.IsError || len(f2.invites) != 1 {
 		t.Fatalf("exact username: %q", resultText(r))
+	}
+}
+
+// Live test: the assistant passed "/sgnl-mcp-test.md"; a short path means
+// the personal space.
+func TestShareShortPathIsPersonal(t *testing.T) {
+	f := &fakeFiles{users: []map[string]string{hugo}}
+	var asked string
+	cs := shareSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = r.Params.Message
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	})
+	for _, p := range []string{"/notes.md", "notes.md"} {
+		if r := share(t, cs, p, "hugo", ""); r.IsError {
+			t.Fatalf("%s: %q", p, resultText(r))
+		}
+	}
+	if len(f.invites) != 2 || !strings.Contains(asked, `"notes.md"`) {
+		t.Fatalf("%d invites, asked %q", len(f.invites), asked)
 	}
 }
 
