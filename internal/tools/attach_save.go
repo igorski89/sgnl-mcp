@@ -88,8 +88,12 @@ func (t *Tools) mailAttachmentSave(ctx context.Context, req *mcp.CallToolRequest
 	a := es[0].Attachments[in.Index]
 	name := safeName(firstNonEmptyStr(in.Name, a.Name))
 
-	if sp.Type != "personal" {
-		res, ok, err := t.confirm(ctx, req, fmt.Sprintf("Save the attachment %q into the SHARED space %q? Everyone with access to that space will see it.", oneLine(name, 80), oneLine(sp.Name, 60)),
+	seen, err := t.othersSee(ctx, ftok, sp, folder)
+	if err != nil {
+		return nil, MailAttachmentSaveOut{}, err
+	}
+	if seen != "" {
+		res, ok, err := t.confirm(ctx, req, fmt.Sprintf("Save the attachment %q in %s? %s", oneLine(name, 80), shownPlace(sp, folder), seen),
 			folder+"|"+in.ID+"|"+fmt.Sprint(in.Index)+"|"+name)
 		if err != nil || res != nil {
 			return res, MailAttachmentSaveOut{}, err
@@ -113,9 +117,9 @@ func (t *Tools) mailAttachmentSave(ctx context.Context, req *mcp.CallToolRequest
 	if err != nil {
 		return nil, MailAttachmentSaveOut{}, err
 	}
-	note := "Saved as a new file in the personal space (private). Nothing existing was changed."
-	if sp.Type != "personal" {
-		note = "Saved as a new file in the shared space " + sp.Name + ", with the person's confirmation."
+	note := "Saved as a new file in the personal space, where only the person sees it. Nothing existing was changed."
+	if seen != "" {
+		note = "Saved as a new file, with the person's confirmation; others with access see it."
 	}
 	return nil, MailAttachmentSaveOut{Path: p, Name: name, Size: len(data), Note: note}, nil
 }

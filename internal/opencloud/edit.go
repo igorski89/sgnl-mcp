@@ -19,7 +19,7 @@ import (
 // "?" or "#" (which would make the request reach a different file than
 // the one named).
 func davFile(path string) bool {
-	return strings.HasPrefix(path, davPrefix) && !strings.Contains(path, "..") && !strings.ContainsAny(path, "?#") && !strings.HasSuffix(path, "/")
+	return strings.HasPrefix(path, davPrefix) && !strings.HasPrefix(path, trashPrefix) && !strings.Contains(path, "..") && !strings.ContainsAny(path, "?#") && !strings.HasSuffix(path, "/")
 }
 
 // ErrChanged: the file is no longer the version that was read.

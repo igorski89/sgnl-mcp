@@ -132,6 +132,11 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 		}
 		fmt.Fprintf(&b, "%d. %s\n", i+1, describe(e, 300))
 	}
+	if shared, err := t.Files.SharedWithOthers(ctx, tok, sp.Path, p); err != nil {
+		return nil, FileEditOut{}, err
+	} else if shared {
+		b.WriteString("\nThis file is SHARED with others: they will see the change.\n")
+	}
 	if t.outside.recent(me.Username) {
 		b.WriteString("\nWARNING: your assistant read email from outside the company in the last 30 minutes; make sure this is what you asked for.\n")
 	}

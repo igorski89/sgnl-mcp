@@ -34,6 +34,10 @@ func New(base string) *Client {
 // davPrefix: the only paths file_read accepts (what search returns).
 const davPrefix = "/remote.php/dav/spaces/"
 
+// trashPrefix: the trash bins (also under davPrefix). Only listed, and
+// items restored through Restore; a DELETE there would destroy for good.
+const trashPrefix = davPrefix + "trash-bin/"
+
 // post: the share invite, the only POST (see share.go).
 func (c *Client) post(ctx context.Context, token, path string, body []byte) (*http.Response, error) {
 	if !invitePath.MatchString(path) {
@@ -45,6 +49,9 @@ func (c *Client) post(ctx context.Context, token, path string, body []byte) (*ht
 func (c *Client) do(ctx context.Context, token, method, path string, body io.Reader, hdr map[string]string) (*http.Response, error) {
 	if !slices.Contains(allowedMethods, method) {
 		return nil, fmt.Errorf("opencloud: %s is not allowed (read-only)", method)
+	}
+	if strings.HasPrefix(path, trashPrefix) && method != "PROPFIND" {
+		return nil, fmt.Errorf("opencloud: only listing the trash bin is allowed here")
 	}
 	if method == "PUT" && hdr["If-None-Match"] != "*" {
 		return nil, fmt.Errorf("opencloud: PUT only for new files (never overwrite)")
@@ -185,6 +192,7 @@ func xmlEscape(s string) string {
 
 // Space: a drive the person can see (personal, project, shares).
 type Space struct {
+	ID   string `json:"-"`
 	Name string `json:"name"`
 	Type string `json:"type"`
 	Path string `json:"path" jsonschema:"pass to folder_list / file_save"`
@@ -226,7 +234,7 @@ func (c *Client) Spaces(ctx context.Context, token string) ([]Space, error) {
 				p += "/"
 			}
 		}
-		out = append(out, Space{d.Name, d.DriveType, p})
+		out = append(out, Space{d.ID, d.Name, d.DriveType, p})
 	}
 	return out, nil
 }

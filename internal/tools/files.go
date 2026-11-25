@@ -166,8 +166,12 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 	if sp == nil {
 		return nil, FileSaveOut{}, fmt.Errorf("folder must come from folder_list")
 	}
-	if sp.Type != "personal" {
-		res, ok, err := t.confirm(ctx, req, fmt.Sprintf("Save %q (%d bytes) into the SHARED space %q? Everyone with access to that space will see it.", in.Name, len(in.Content), sp.Name), sp.Path)
+	seen, err := t.othersSee(ctx, tok, sp, in.Folder)
+	if err != nil {
+		return nil, FileSaveOut{}, err
+	}
+	if seen != "" {
+		res, ok, err := t.confirm(ctx, req, fmt.Sprintf("Save %q (%d bytes) in %s? %s", oneLine(in.Name, 80), len(in.Content), shownPlace(sp, in.Folder), seen), sp.Path+"|"+in.Folder)
 		if err != nil || res != nil {
 			return res, FileSaveOut{}, err
 		}
@@ -179,9 +183,9 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 	if err != nil {
 		return nil, FileSaveOut{}, err
 	}
-	note := "Saved as a new file in the personal space. Nothing existing was changed, and it isn't shared."
-	if sp.Type != "personal" {
-		note = "Saved as a new file in the shared space " + sp.Name + ", with the person's confirmation. Nothing existing was changed."
+	note := "Saved as a new file in the personal space, where only the person sees it. Nothing existing was changed."
+	if seen != "" {
+		note = "Saved as a new file, with the person's confirmation; others with access see it. Nothing existing was changed."
 	}
 	return nil, FileSaveOut{p, in.Name, note}, nil
 }

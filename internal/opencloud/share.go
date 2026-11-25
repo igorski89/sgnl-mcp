@@ -149,3 +149,106 @@ func (c *Client) getJSON(ctx context.Context, token, path string, out any) error
 	}
 	return json.Unmarshal(b, out)
 }
+
+// Shared: one item someone shares with the person, or the person shares.
+type Shared struct {
+	Name   string   `json:"name"`
+	Folder bool     `json:"folder,omitempty"`
+	By     string   `json:"shared_by,omitempty"`
+	With   []Grant  `json:"shared_with,omitempty"`
+	ItemID string   `json:"-"`
+	Drive  string   `json:"-"`
+	Roles  []string `json:"-"`
+}
+
+// Grant: who has access to a shared item, and how.
+type Grant struct {
+	ID     string `json:"-"`
+	Who    string `json:"who"`
+	Access string `json:"access" jsonschema:"view, edit or other"`
+	Link   bool   `json:"link,omitempty" jsonschema:"a link, not a person"`
+}
+
+func accessOf(roles []string) string {
+	for _, r := range roles {
+		switch r {
+		case RoleViewer:
+			return "view"
+		case RoleEditor, RoleFileEditor:
+			return "edit"
+		}
+	}
+	return "other"
+}
+
+type graphItem struct {
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Folder          *struct{} `json:"folder"`
+	ParentReference struct {
+		DriveID string `json:"driveId"`
+	} `json:"parentReference"`
+	RemoteItem *struct {
+		Name   string    `json:"name"`
+		Folder *struct{} `json:"folder"`
+		Shared struct {
+			SharedBy struct {
+				User struct{ DisplayName string } `json:"user"`
+			} `json:"sharedBy"`
+		} `json:"shared"`
+	} `json:"remoteItem"`
+	Permissions []struct {
+		ID          string   `json:"id"`
+		Roles       []string `json:"roles"`
+		GrantedToV2 struct {
+			User  struct{ DisplayName string } `json:"user"`
+			Group struct{ DisplayName string } `json:"group"`
+		} `json:"grantedToV2"`
+		Link *struct{} `json:"link"`
+	} `json:"permissions"`
+}
+
+// SharedWithMe: what others share with the person.
+func (c *Client) SharedWithMe(ctx context.Context, token string) ([]Shared, error) {
+	var r struct{ Value []graphItem }
+	if err := c.getJSON(ctx, token, "/graph/v1beta1/me/drive/sharedWithMe", &r); err != nil {
+		return nil, err
+	}
+	out := []Shared{}
+	for _, it := range r.Value {
+		s := Shared{Name: it.Name, Folder: it.Folder != nil}
+		if ri := it.RemoteItem; ri != nil {
+			if s.Name == "" {
+				s.Name = ri.Name
+			}
+			s.Folder = s.Folder || ri.Folder != nil
+			s.By = ri.Shared.SharedBy.User.DisplayName
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// SharedByMe: what the person shares, and with whom.
+func (c *Client) SharedByMe(ctx context.Context, token string) ([]Shared, error) {
+	var r struct{ Value []graphItem }
+	if err := c.getJSON(ctx, token, "/graph/v1beta1/me/drive/sharedByMe", &r); err != nil {
+		return nil, err
+	}
+	out := []Shared{}
+	for _, it := range r.Value {
+		s := Shared{Name: it.Name, Folder: it.Folder != nil, ItemID: it.ID, Drive: it.ParentReference.DriveID}
+		for _, p := range it.Permissions {
+			who := p.GrantedToV2.User.DisplayName
+			if who == "" {
+				who = p.GrantedToV2.Group.DisplayName
+			}
+			if p.Link != nil {
+				who = "anyone with the link"
+			}
+			s.With = append(s.With, Grant{ID: p.ID, Who: who, Access: accessOf(p.Roles), Link: p.Link != nil})
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}

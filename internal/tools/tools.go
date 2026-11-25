@@ -68,7 +68,7 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Read the text of a message's attachment (PDF, Word .docx, text, CSV, HTML)." + mailNote}, t.mailAttachmentRead)
 	if t.Files != nil {
 		add(t, s, &mcp.Tool{Name: "mail_attachment_save", Annotations: wr,
-			Description: "Save a mail's attachment into your files as a new file (never overwrites): by default at the top of your personal space, which is private. Into a shared (project) space the person is asked first."}, t.mailAttachmentSave)
+			Description: "Save a mail's attachment into your files as a new file (never overwrites): by default at the top of your personal space. Into a project space or a folder shared with others the person is asked first."}, t.mailAttachmentSave)
 	}
 	add(t, s, &mcp.Tool{Name: "mailbox_list", Annotations: ro,
 		Description: "Your mail folders with unread and total counts."}, t.mailboxList)
@@ -125,7 +125,15 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(t, s, &mcp.Tool{Name: "file_share", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 			Description: "Share a file or folder from your personal space with one colleague (view, or edit). The person is asked in their app first, with what, whom and the access shown; nothing is shared without their yes. No public links."}, t.fileShare)
 		add(t, s, &mcp.Tool{Name: "file_save", Annotations: wr,
-			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file. In the personal space it is private; in a shared (project) space the person is asked to confirm first, because others will see it."}, t.fileSave)
+			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file. Into a project space or a folder shared with others the person is asked to confirm first, because others will see it."}, t.fileSave)
+		add(t, s, &mcp.Tool{Name: "file_shares", Annotations: ro,
+			Description: "What others share with you, and what you share: each item with whom and how (view or edit). " + untrustedNames}, t.fileShares)
+		add(t, s, &mcp.Tool{Name: "file_versions", Annotations: ro,
+			Description: "A file's earlier versions (when, size). The file app keeps one each time a file changes."}, t.fileVersions)
+		add(t, s, &mcp.Tool{Name: "file_trash_list", Annotations: ro,
+			Description: "What is in a space's trash bin (default: your personal space): name, where it was, when it was deleted. " + untrustedNames}, t.fileTrashList)
+		add(t, s, &mcp.Tool{Name: "folder_create", Annotations: wr,
+			Description: "Create a new, empty folder (default: at the top of your personal space). In a project space or a folder shared with others the person is asked first."}, t.folderCreate)
 		add(t, s, &mcp.Tool{Name: "file_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
 			Description: "Change a text file (.md, .txt, .csv, .json, .yaml) in your personal space: exact replacements (old_text must occur exactly once) or one append, applied to the file as it is now. The person is asked in their app first, with the changes shown; nothing is written without their yes, and not if the file changed meanwhile. To make a new file use file_save."}, t.fileEdit)
 	}
