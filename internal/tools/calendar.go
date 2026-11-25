@@ -30,6 +30,7 @@ type Event struct {
 	AllDay   bool   `json:"all_day,omitempty"`
 	Location string `json:"location,omitempty"`
 	Calendar string `json:"calendar,omitempty"`
+	Status   string `json:"status,omitempty" jsonschema:"cancelled: the organizer called it off; tentative"`
 }
 
 type EventListOut struct {
@@ -75,7 +76,7 @@ func (t *Tools) events(ctx context.Context, from, to time.Time) ([]Event, error)
 			"expandRecurrences": true, "limit": 200}},
 		jmap.Call{Method: "CalendarEvent/get", Args: map[string]any{"accountId": acct,
 			"#ids":       jmap.Ref(1, "CalendarEvent/query", "/ids"),
-			"properties": []string{"id", "title", "start", "timeZone", "duration", "showWithoutTime", "locations", "calendarIds"}}})
+			"properties": []string{"id", "title", "start", "timeZone", "duration", "showWithoutTime", "locations", "calendarIds", "status"}}})
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +98,7 @@ func (t *Tools) events(ctx context.Context, from, to time.Time) ([]Event, error)
 			ShowWithoutTime bool                             `json:"showWithoutTime"`
 			Locations       map[string]struct{ Name string } `json:"locations"`
 			CalendarIDs     map[string]bool                  `json:"calendarIds"`
+			Status          string                           `json:"status"`
 		} `json:"list"`
 	}
 	if err := json.Unmarshal(r[2], &got); err != nil {
@@ -105,6 +107,9 @@ func (t *Tools) events(ctx context.Context, from, to time.Time) ([]Event, error)
 	out := []Event{}
 	for _, e := range got.List {
 		ev := Event{ID: e.ID, Title: e.Title, Start: e.Start, TimeZone: e.TimeZone, Duration: e.Duration, AllDay: e.ShowWithoutTime}
+		if e.Status != "" && e.Status != "confirmed" {
+			ev.Status = e.Status
+		}
 		for _, l := range e.Locations {
 			ev.Location = l.Name
 			break

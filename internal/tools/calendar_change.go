@@ -96,6 +96,9 @@ func (t *Tools) eventRespond(ctx context.Context, req *mcp.CallToolRequest, in E
 	if e.repeats() {
 		return nil, EventChangeOut{}, fmt.Errorf("this is a repeating event: answer it in your calendar app (not offered here yet)")
 	}
+	if e.Status == "cancelled" {
+		return nil, EventChangeOut{}, fmt.Errorf("the organizer cancelled this event: there's nothing to answer")
+	}
 	start, end, err := t.window(e)
 	if err != nil {
 		return nil, EventChangeOut{}, err

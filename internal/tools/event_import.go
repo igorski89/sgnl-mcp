@@ -188,6 +188,9 @@ func (t *Tools) eventImport(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		return nil, EventCreateOut{}, err
 	}
 	if err := jmap.SetErrors(r[0]); err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return nil, EventCreateOut{}, fmt.Errorf("this invitation is already in your calendar (nothing was added): find it with event_list")
+		}
 		return nil, EventCreateOut{}, err
 	}
 	var created struct {

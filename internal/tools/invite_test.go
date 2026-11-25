@@ -76,7 +76,7 @@ func inviteSession(t *testing.T, f *fakeCal, h elicitFn) *mcp.ClientSession {
 	t.Helper()
 	srv := f.serve(t)
 	s := mcp.NewServer(&mcp.Implementation{Name: "t"}, nil)
-	(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(srv.URL + "/session"), Access: Access{All: true}, TZ: "Europe/Berlin", Experiments: map[string]bool{"invites": true},
+	(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(srv.URL + "/session"), Access: Access{All: true}, TZ: "Europe/Berlin",
 		InternalDomains: []string{"co.example"}}).Register(s)
 	ct, st := mcp.NewInMemoryTransports()
 	if _, err := s.Connect(context.Background(), st, nil); err != nil {

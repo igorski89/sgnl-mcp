@@ -142,3 +142,19 @@ func TestDurText(t *testing.T) {
 		}
 	}
 }
+
+// Live test: a cancelled meeting stayed in event_list without a sign, and
+// could still be answered.
+func TestCancelledIsShownAndNotAnswered(t *testing.T) {
+	asPerson(t, "me@co.example")
+	c := future(meeting)
+	c["status"] = "cancelled"
+	f := &fakeCal{events: map[string]map[string]any{"e1": c}}
+	cs := inviteSession(t, f, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		t.Error("asked")
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	})
+	if r := calCall(t, cs, "event_respond", map[string]any{"id": "e1", "answer": "accept"}); !r.IsError || !strings.Contains(resultText(r), "cancelled") {
+		t.Fatalf("%q", resultText(r))
+	}
+}
