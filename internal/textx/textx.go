@@ -156,7 +156,18 @@ func HTML(s string) string {
 // controls, Unicode tag characters used for "ASCII smuggling", soft
 // hyphens), with blank-line runs collapsed.
 func Visible(s string) string {
-	s = strings.Map(func(r rune) rune {
+	lines := strings.Split(StripHidden(s), "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, " \t\r")
+	}
+	return strings.TrimSpace(reBlank.ReplaceAllString(strings.Join(lines, "\n"), "\n\n"))
+}
+
+// StripHidden: s without the characters a reader can't see, otherwise
+// exactly as it is (line breaks, spacing): for text files the assistant
+// may edit by exact match.
+func StripHidden(s string) string {
+	return strings.Map(func(r rune) rune {
 		switch {
 		case r >= 0x200B && r <= 0x200F, r >= 0x202A && r <= 0x202E, r >= 0x2060 && r <= 0x2064,
 			r >= 0x2066 && r <= 0x2069, r == 0xFEFF, r == 0x00AD, r == 0x180E, r >= 0xE0000 && r <= 0xE007F:
@@ -164,11 +175,6 @@ func Visible(s string) string {
 		}
 		return r
 	}, s)
-	lines := strings.Split(s, "\n")
-	for i, l := range lines {
-		lines[i] = strings.TrimRight(l, " \t\r")
-	}
-	return strings.TrimSpace(reBlank.ReplaceAllString(strings.Join(lines, "\n"), "\n\n"))
 }
 
 var textExt = map[string]bool{".md": true, ".txt": true, ".csv": true, ".json": true, ".yaml": true, ".yml": true, ".log": true, ".ics": true, ".vcf": true}

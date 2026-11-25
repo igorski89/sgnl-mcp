@@ -196,3 +196,22 @@ func TestEditNotWrittenIfFileChangedWhileAsking(t *testing.T) {
 		t.Fatalf("written over a newer version: %q, %d puts", resultText(r), f.puts)
 	}
 }
+
+// Live test: file_read dropped the trailing newline and showed the name
+// escaped. A text file reads exactly as it is (minus invisible characters),
+// so an edit can copy old_text from it.
+func TestReadIsExactForEditableText(t *testing.T) {
+	f := newDrive()
+	f.set("/remote.php/dav/spaces/p/Müller notes.md", "a  \n\n\n​b\n")
+	cs := editSession(t, f, nil)
+	r, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "file_read", Arguments: map[string]any{"path": "/remote.php/dav/spaces/p/M%C3%BCller%20notes.md"}})
+	if err != nil || r.IsError {
+		t.Fatal(err, resultText(r))
+	}
+	var out FileReadOut
+	b, _ := json.Marshal(r.StructuredContent)
+	json.Unmarshal(b, &out)
+	if out.Text != "a  \n\n\nb\n" || out.Name != "Müller notes.md" {
+		t.Fatalf("read %q as %q", out.Name, out.Text)
+	}
+}

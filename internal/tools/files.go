@@ -3,8 +3,10 @@ package tools
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/igorski89/sgnl-mcp/internal/opencloud"
 	"github.com/igorski89/sgnl-mcp/internal/textx"
@@ -71,8 +73,15 @@ func (t *Tools) fileRead(ctx context.Context, _ *mcp.CallToolRequest, in FileRea
 		return nil, FileReadOut{}, err
 	}
 	name := path.Base(in.Path)
-	text, err := textx.Extract(name, ctype, data, truncated)
-	if err != nil {
+	if u, err := url.PathUnescape(name); err == nil {
+		name = u
+	}
+	var text string
+	if _, editable := saveTypes[strings.ToLower(path.Ext(name))]; editable && !truncated && utf8.Valid(data) {
+		// Exactly as in the file (only invisible characters dropped), so
+		// file_edit's old_text can be copied from it.
+		text = textx.StripHidden(string(data))
+	} else if text, err = textx.Extract(name, ctype, data, truncated); err != nil {
 		return nil, FileReadOut{}, err
 	}
 	out := FileReadOut{Note: untrustedFile, Name: name, Type: ctype, Text: text, Truncated: truncated}
@@ -116,6 +125,7 @@ type FileSaveIn struct {
 
 type FileSaveOut struct {
 	Path string `json:"path"`
+	Name string `json:"name"`
 	Note string `json:"note"`
 }
 
@@ -173,5 +183,5 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 	if sp.Type != "personal" {
 		note = "Saved as a new file in the shared space " + sp.Name + ", with the person's confirmation. Nothing existing was changed."
 	}
-	return nil, FileSaveOut{p, note}, nil
+	return nil, FileSaveOut{p, in.Name, note}, nil
 }
