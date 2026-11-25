@@ -239,6 +239,19 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 	if outside > 0 {
 		first += fmt.Sprintf(" (%d OUTSIDE the company)", outside)
 	}
+	// Attachments on the first line too: clients fold the rest of the
+	// question, and a file going out is what matters most to see.
+	if n := len(e.Attachments); n > 0 {
+		names := make([]string, 0, 3)
+		for _, a := range e.Attachments[:min(3, n)] {
+			names = append(names, oneLine(a.Name, 40))
+		}
+		list := strings.Join(names, ", ")
+		if n > 3 {
+			list += ", …"
+		}
+		first += fmt.Sprintf(" with %d attachment%s: %s", n, map[bool]string{true: "s", false: ""}[n > 1], list)
+	}
 	b.WriteString(first + "?\n\nFrom: " + oneLine(e.From[0].Email, 200) + "\n")
 	for _, x := range rs {
 		var tags []string

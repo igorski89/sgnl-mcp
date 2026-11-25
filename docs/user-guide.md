@@ -107,7 +107,7 @@ WARNING: 1 recipient(s) outside the company.
 
 **Check the recipients, then press Accept to send.** Decline or Esc sends nothing, and the draft stays in Drafts.
 
-The first line always names the subject and the recipients. Look for these labels and warnings:
+The first line always names the subject, the recipients and any attachments (some apps fold the rest: expand it if you want to see everything). Look for these labels and warnings:
 
 - **OUTSIDE the company:** this recipient is not a colleague.
 - **never written to before:** you haven't sent mail to this address yet.

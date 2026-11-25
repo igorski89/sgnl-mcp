@@ -350,3 +350,20 @@ func TestSendBcc(t *testing.T) {
 		t.Fatalf("%q, asked %q", resultText(r), asked)
 	}
 }
+
+// The first line (all a folded dialog shows) names the attachments.
+func TestSendFirstLineNamesAttachments(t *testing.T) {
+	f := newFakeMail()
+	f.draft["attachments"] = []map[string]any{{"blobId": "b1", "name": "q4.pdf", "type": "application/pdf"},
+		{"blobId": "b2", "name": "a.xlsx"}, {"blobId": "b3", "name": "b.docx"}, {"blobId": "b4", "name": "c.txt"}}
+	var asked string
+	cs := sendSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = r.Params.Message
+		return &mcp.ElicitResult{Action: "decline"}, nil
+	}, false)
+	send(t, cs)
+	first, _, _ := strings.Cut(asked, "\n")
+	if !strings.Contains(first, "with 4 attachments: q4.pdf, a.xlsx, b.docx, …") || !strings.Contains(first, "OUTSIDE") {
+		t.Fatalf("first line: %q", first)
+	}
+}
