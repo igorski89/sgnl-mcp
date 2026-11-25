@@ -115,3 +115,34 @@ func TestMoveTrashRestoreGuards(t *testing.T) {
 		}
 	}
 }
+
+func TestUnshareAndVersionGuards(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.URL.Path)
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	ctx := context.Background()
+	if err := c.Unshare(ctx, "t", Shared{Drive: "d", ItemID: "i"}, Grant{ID: "p1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got[0] != "DELETE /graph/v1beta1/drives/d/items/i/permissions/p1" {
+		t.Fatalf("sent %v", got)
+	}
+	for _, bad := range []Shared{{Drive: "", ItemID: "i"}, {Drive: "d", ItemID: ""}} {
+		if err := c.Unshare(ctx, "t", bad, Grant{ID: "p1"}); err == nil {
+			t.Errorf("unshare %v allowed", bad)
+		}
+	}
+	if err := c.Unshare(ctx, "t", Shared{Drive: "d", ItemID: "i"}, Grant{}); err == nil {
+		t.Error("unshare without a grant id allowed")
+	}
+	if err := c.RestoreVersion(ctx, "t", davPrefix+"p/x.md", "a/b"); err == nil {
+		t.Error("version id with a slash allowed")
+	}
+	if len(got) != 1 {
+		t.Fatalf("extra requests: %v", got)
+	}
+}

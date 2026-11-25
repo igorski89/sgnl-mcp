@@ -140,6 +140,10 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Move a file or folder to its space's trash bin. The person is always asked first (what, how much, whether others lose it). Restorable with file_restore or in the file app; nothing is deleted for good."}, t.fileTrash)
 		add(t, s, &mcp.Tool{Name: "file_restore", Annotations: wr,
 			Description: "Restore an item from a trash bin (id from file_trash_list) to where it was, never over something there now. Back into a place others see, the person is asked first."}, t.fileRestore)
+		add(t, s, &mcp.Tool{Name: "file_version_restore", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
+			Description: "Restore a file to an earlier version (id from file_versions). The person is asked first; the current content is kept as a version, so it can be undone."}, t.fileVersionRestore)
+		add(t, s, &mcp.Tool{Name: "file_unshare", Annotations: wr,
+			Description: "Stop sharing a file or folder of yours with one person (or remove its link). The person is asked first. Only for what you share directly; for an item inside a shared folder, stop sharing the folder."}, t.fileUnshare)
 		add(t, s, &mcp.Tool{Name: "folder_create", Annotations: wr,
 			Description: "Create a new, empty folder (default: at the top of your personal space). In a project space or a folder shared with others the person is asked first."}, t.folderCreate)
 		add(t, s, &mcp.Tool{Name: "file_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},

@@ -310,3 +310,42 @@ func (c *Client) Restore(ctx context.Context, token, spaceID, spacePath, id, loc
 		return fmt.Errorf("files: restore %d %.200s", resp.StatusCode, b)
 	}
 }
+
+// RestoreVersion: the file at p gets the content of its earlier version
+// versionID (OpenCloud keeps the current content as a version). versionID
+// must be one Versions lists for p.
+func (c *Client) RestoreVersion(ctx context.Context, token, p, versionID string) error {
+	if !davItem(p) || versionID == "" || strings.ContainsAny(versionID, "/?#") {
+		return fmt.Errorf("files: bad version")
+	}
+	it, err := c.Item(ctx, token, p)
+	if err != nil {
+		return err
+	}
+	vs, err := c.Versions(ctx, token, p)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, v := range vs {
+		found = found || v.ID == versionID
+	}
+	if !found {
+		return fmt.Errorf("no version %q of this file (see file_versions)", versionID)
+	}
+	src := metaPrefix + url.PathEscape(it.ID) + "/v/" + url.PathEscape(versionID)
+	resp, err := c.send(ctx, token, "COPY", src, nil, map[string]string{"Destination": c.Base + p})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 204, 201, 200:
+		return nil
+	case 423:
+		return fmt.Errorf("the file is locked (open for editing somewhere?): nothing was changed")
+	default:
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("files: restore version %d %.200s", resp.StatusCode, b)
+	}
+}

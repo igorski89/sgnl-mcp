@@ -98,6 +98,11 @@ func (t *Tools) fileMove(ctx context.Context, req *mcp.CallToolRequest, in FileM
 			what = "folder"
 		}
 		first := fmt.Sprintf("Move the %s %q to %q?", what, shownPath(sp, src), shownPath(sp, dst))
+		if seenTo != "" {
+			first += " Others will see it there."
+		} else {
+			first += " Others who see it now won't anymore."
+		}
 		var b strings.Builder
 		b.WriteString(first + "\n\n")
 		if seenFrom != "" && seenTo == "" {
@@ -251,4 +256,141 @@ func (t *Tools) fileRestore(ctx context.Context, req *mcp.CallToolRequest, in Fi
 		return nil, FileChangeOut{}, err
 	}
 	return nil, FileChangeOut{Note: "Restored to " + oneLine(item.Location, 200) + "."}, nil
+}
+
+// ---- file_version_restore: a file back to an earlier version, after the
+// person confirms (like an edit: the current content becomes a version).
+
+type FileVersionRestoreIn struct {
+	Path    string `json:"path" jsonschema:"the file: a path from file_search or folder_list, or a short one like /notes.md"`
+	Version string `json:"version" jsonschema:"the version's id from file_versions"`
+}
+
+func (t *Tools) fileVersionRestore(ctx context.Context, req *mcp.CallToolRequest, in FileVersionRestoreIn) (*mcp.CallToolResult, FileChangeOut, error) {
+	tok, err := t.Auth.FilesToken(ctx)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	spaces, err := t.Files.Spaces(ctx, tok)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	p := personalPath(spaces, strings.TrimSpace(in.Path))
+	sp := spaceOf(spaces, p)
+	if sp == nil {
+		return nil, FileChangeOut{}, fmt.Errorf("path %q not recognised: use a path from file_search or folder_list", oneLine(p, 200))
+	}
+	vs, err := t.Files.Versions(ctx, tok, p)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	var v *opencloud.Version
+	for i := range vs {
+		if vs[i].ID == in.Version {
+			v = &vs[i]
+		}
+	}
+	if v == nil {
+		return nil, FileChangeOut{}, fmt.Errorf("no version %q of this file (see file_versions)", oneLine(in.Version, 80))
+	}
+	etag, err := t.Files.Etag(ctx, tok, p)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	seen, err := t.othersSee(ctx, tok, sp, p)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	first := fmt.Sprintf("Restore your file %q to its version of %s (%s bytes)?", shownPath(sp, p), oneLine(v.Modified, 40), oneLine(v.Size, 12))
+	if seen != "" {
+		first = fmt.Sprintf("Restore your SHARED file %q (others see it) to its version of %s (%s bytes)?", shownPath(sp, p), oneLine(v.Modified, 40), oneLine(v.Size, 12))
+	}
+	res, ok, err := t.confirm(ctx, req, first+"\n\nThe current content is kept as a version, so this can be undone the same way.\n", p+"|"+etag+"|"+v.ID)
+	if err != nil || res != nil {
+		return res, FileChangeOut{}, err
+	}
+	if !ok {
+		return nil, FileChangeOut{}, fmt.Errorf("the person declined: the file wasn't changed")
+	}
+	if now, err := t.Files.Etag(ctx, tok, p); err != nil || now != etag {
+		return nil, FileChangeOut{}, fmt.Errorf("the file changed after the person was asked: nothing was restored")
+	}
+	if err := t.Files.RestoreVersion(ctx, tok, p, v.ID); err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	return nil, FileChangeOut{p, "Restored, with the person's confirmation; the content before is now a version."}, nil
+}
+
+// ---- file_unshare: stop sharing an item of the person's with someone.
+
+type FileUnshareIn struct {
+	Path string `json:"path" jsonschema:"the shared file or folder: a path from file_search or folder_list, or a short one"`
+	With string `json:"with" jsonschema:"whom to stop sharing with: their name as file_shares shows it, or 'link' for a link"`
+}
+
+func (t *Tools) fileUnshare(ctx context.Context, req *mcp.CallToolRequest, in FileUnshareIn) (*mcp.CallToolResult, FileChangeOut, error) {
+	tok, err := t.Auth.FilesToken(ctx)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	spaces, err := t.Files.Spaces(ctx, tok)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	p := personalPath(spaces, strings.TrimSpace(in.Path))
+	sp := spaceOf(spaces, p)
+	if sp == nil {
+		return nil, FileChangeOut{}, fmt.Errorf("path %q not recognised: use a path from file_search or folder_list", oneLine(p, 200))
+	}
+	it, err := t.Files.Item(ctx, tok, strings.TrimSuffix(p, "/"))
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	by, err := t.Files.SharedByMe(ctx, tok)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	var item *opencloud.Shared
+	for i := range by {
+		if by[i].ItemID == it.ID {
+			item = &by[i]
+		}
+	}
+	if item == nil {
+		if shared, _ := t.Files.SharedWithOthers(ctx, tok, sp.Path, p); shared {
+			return nil, FileChangeOut{}, fmt.Errorf("this item isn't shared by itself: it's in a folder you share; stop sharing that folder (see file_shares)")
+		}
+		return nil, FileChangeOut{}, fmt.Errorf("you don't share this item (see file_shares)")
+	}
+	want := strings.ToLower(strings.TrimSpace(in.With))
+	var grants []opencloud.Grant
+	for _, g := range item.With {
+		if (want == "link" && g.Link) || (!g.Link && want != "" && strings.Contains(strings.ToLower(g.Who), want)) {
+			grants = append(grants, g)
+		}
+	}
+	if len(grants) != 1 {
+		var names []string
+		for _, g := range item.With {
+			names = append(names, g.Who)
+		}
+		return nil, FileChangeOut{}, fmt.Errorf("%d grants match %q; this item is shared with: %s", len(grants), oneLine(in.With, 60), strings.Join(names, ", "))
+	}
+	g := grants[0]
+	what := "FILE"
+	if it.Folder {
+		what = "FOLDER"
+	}
+	first := fmt.Sprintf("Stop sharing the %s %q with %s (%s)? They lose access.", what, shownPath(sp, p), oneLine(g.Who, 60), g.Access)
+	res, ok, err := t.confirm(ctx, req, first, it.ID+"|"+g.ID)
+	if err != nil || res != nil {
+		return res, FileChangeOut{}, err
+	}
+	if !ok {
+		return nil, FileChangeOut{}, fmt.Errorf("the person declined: the sharing is unchanged")
+	}
+	if err := t.Files.Unshare(ctx, tok, *item, g); err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	return nil, FileChangeOut{Note: "No longer shared with " + oneLine(g.Who, 60) + "."}, nil
 }

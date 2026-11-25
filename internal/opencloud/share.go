@@ -274,3 +274,27 @@ func (c *Client) SharedByMe(ctx context.Context, token string) ([]Shared, error)
 	}
 	return out, nil
 }
+
+// permissionPath: the one DELETE the client makes on Graph: one grant.
+var permissionPath = regexp.MustCompile(`^/graph/v1beta1/drives/[^/?#]+/items/[^/?#]+/permissions/[^/?#]+$`)
+
+// Unshare: remove one grant (from SharedByMe) on an item.
+func (c *Client) Unshare(ctx context.Context, token string, s Shared, g Grant) error {
+	if s.Drive == "" || s.ItemID == "" || g.ID == "" {
+		return fmt.Errorf("files: bad share")
+	}
+	p := "/graph/v1beta1/drives/" + url.PathEscape(s.Drive) + "/items/" + url.PathEscape(s.ItemID) + "/permissions/" + url.PathEscape(g.ID)
+	if !permissionPath.MatchString(p) {
+		return fmt.Errorf("opencloud: DELETE %s is not allowed", p)
+	}
+	resp, err := c.send(ctx, token, "DELETE", p, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 204 && resp.StatusCode != 200 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("files: stop sharing %d %.200s", resp.StatusCode, b)
+	}
+	return nil
+}
