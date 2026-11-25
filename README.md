@@ -23,7 +23,7 @@ needs your click, staying safe).
 | `mail_thread_read` | mail (JMAP) | a whole conversation |
 | `mail_attachment_read` | mail (JMAP) | an attachment as text |
 | `mail_attachment_save` | mail → files | an attachment as a new file in the drive (personal space by default; shared space: confirmation) |
-| `mailbox_list` | mail (JMAP) | folders with unread counts |; also the shared mailboxes the person is a member of
+| `mailbox_list` | mail (JMAP) | folders with unread counts; also the shared mailboxes the person is a member of |
 | `mail_draft_create` | mail (JMAP) | new mail, reply, reply-all or forward, saved in Drafts |
 | `mail_draft_update` | mail (JMAP) | change a draft (replaced by a new draft) |
 | `mail_flag` | mail (JMAP) | read / unread, flagged |
