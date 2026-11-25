@@ -150,7 +150,7 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 		return nil, FileEditOut{}, err
 	}
 	slog.Info("file changed", "user", me.Username, "edits", len(in.Edits), "bytes_before", len(data), "bytes_after", len(text))
-	return nil, FileEditOut{p, len(text), "The file was changed, with the person's confirmation."}, nil
+	return nil, FileEditOut{p, len(text), "The file was changed, with the person's confirmation. The previous version is kept in the file's version history (file app: Versions)."}, nil
 }
 
 // describe: one change in a line: what is replaced, removed or appended,
