@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"fmt"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -45,8 +46,13 @@ func newFakeMail() *fakeMail {
 func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/download/") {
+			fmt.Fprint(w, "%PDF-1.4 invoice")
+			return
+		}
 		if r.Method == "GET" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Mail: "A"}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Mail: "A"},
+				"downloadUrl": srv.URL + "/download/{accountId}/{blobId}/{name}?type={type}"})
 			return
 		}
 		var req struct{ MethodCalls [][]json.RawMessage }

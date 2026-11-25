@@ -17,6 +17,7 @@ type fakeCal struct {
 	mu          sync.Mutex
 	sets        []map[string]any
 	unscheduled bool // the mail server made no one organizer (no invitations)
+	events      map[string]map[string]any
 }
 
 func (f *fakeCal) serve(t *testing.T) *httptest.Server {
@@ -39,6 +40,14 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 			_ = json.Unmarshal(mc[2], &id)
 			var res any
 			switch name {
+			case "CalendarEvent/get":
+				list := []any{}
+				for _, id := range args["ids"].([]any) {
+					if e, ok := f.events[id.(string)]; ok {
+						list = append(list, e)
+					}
+				}
+				res = map[string]any{"list": list}
 			case "Calendar/get":
 				res = map[string]any{"list": []map[string]any{{"id": "c1", "isDefault": true}}}
 			case "CalendarEvent/set":

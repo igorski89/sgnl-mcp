@@ -63,6 +63,10 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Read the whole conversation a message belongs to, oldest first (up to the latest 30 messages)." + mailNote}, t.mailThreadRead)
 	add(t, s, &mcp.Tool{Name: "mail_attachment_read", Annotations: ro,
 		Description: "Read the text of a message's attachment (PDF, Word .docx, text, CSV, HTML)." + mailNote}, t.mailAttachmentRead)
+	if t.Files != nil {
+		add(t, s, &mcp.Tool{Name: "mail_attachment_save", Annotations: wr,
+			Description: "Save a mail's attachment into your files as a new file (never overwrites): by default at the top of your personal space, which is private. Into a shared (project) space the person is asked first."}, t.mailAttachmentSave)
+	}
 	add(t, s, &mcp.Tool{Name: "mailbox_list", Annotations: ro,
 		Description: "Your mail folders with unread and total counts."}, t.mailboxList)
 	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
@@ -79,6 +83,8 @@ func (t *Tools) Register(s *mcp.Server) {
 	// Calendar
 	add(t, s, &mcp.Tool{Name: "event_list", Annotations: ro,
 		Description: "Your calendar events in a date range (default: the next 7 days)."}, t.eventList)
+	add(t, s, &mcp.Tool{Name: "event_read", Annotations: ro,
+		Description: "One event in full: time, place, description, organizer, the attendees and their answers (accepted, declined, …), and whether you are organizer or attendee and what you answered. " + untrustedEvent}, t.eventRead)
 	add(t, s, &mcp.Tool{Name: "event_create", Annotations: wr,
 		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). No one is invited: for a meeting with others use event_invite."}, t.eventCreate)
 	add(t, s, &mcp.Tool{Name: "event_invite", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
