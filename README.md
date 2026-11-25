@@ -23,7 +23,7 @@ needs your click, staying safe).
 | `mail_thread_read` | mail (JMAP) | a whole conversation |
 | `mail_attachment_read` | mail (JMAP) | an attachment as text |
 | `mail_attachment_save` | mail → files | an attachment as a new file in the drive (personal space by default; shared space: confirmation) |
-| `mailbox_list` | mail (JMAP) | folders with unread counts |
+| `mailbox_list` | mail (JMAP) | folders with unread counts |; also the shared mailboxes the person is a member of
 | `mail_draft_create` | mail (JMAP) | new mail, reply, reply-all or forward, saved in Drafts |
 | `mail_draft_update` | mail (JMAP) | change a draft (replaced by a new draft) |
 | `mail_flag` | mail (JMAP) | read / unread, flagged |
@@ -136,6 +136,10 @@ only on loopback.
   drafts stay in Drafts; nothing is deleted except a draft being replaced.
   `mail_trash` moves mail to Trash (restorable) after the person confirms
   the listed mails; nothing is ever destroyed.
+  Shared mailboxes: every mail tool takes an optional `account`, one
+  the mail server lists for the person (it enforces who may do what);
+  sending from one needs a sending address the server gives the person
+  there, and the confirmation's first line says "Send AS <address>".
   The out-of-office reply (it answers every sender) is switched on only
   after the person confirms the dates and the whole text; plain text only,
   through its own path in the JMAP client. Forwarding and filters stay

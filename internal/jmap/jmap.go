@@ -122,6 +122,15 @@ type Session struct {
 	UploadURL       string            `json:"uploadUrl"`
 	Capabilities    map[string]any    `json:"capabilities"`
 	PrimaryAccounts map[string]string `json:"primaryAccounts"`
+	Accounts        map[string]Account `json:"accounts"`
+}
+
+// Account: one account the person may use (their own, or a shared one).
+type Account struct {
+	Name                string         `json:"name"`
+	IsPersonal          bool           `json:"isPersonal"`
+	IsReadOnly          bool           `json:"isReadOnly"`
+	AccountCapabilities map[string]any `json:"accountCapabilities"`
 }
 
 type Client struct {

@@ -15,6 +15,7 @@ import (
 // space asks first, as file_save does.
 
 type MailAttachmentSaveIn struct {
+	InAccount
 	ID     string `json:"id" jsonschema:"message id"`
 	Index  int    `json:"index" jsonschema:"attachment index from mail_read"`
 	Folder string `json:"folder,omitempty" jsonschema:"folder path from folder_list; default: the top of your personal space"`

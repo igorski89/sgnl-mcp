@@ -67,7 +67,79 @@ func (t *Tools) mailSession(ctx context.Context) (string, *jmap.Session, string,
 	if acct == "" {
 		return "", nil, "", fmt.Errorf("no mailbox for this account")
 	}
+	if want := accountOf(ctx); want != "" {
+		id, err := sharedAccount(s, want)
+		if err != nil {
+			return "", nil, "", err
+		}
+		acct = id
+	}
 	return tok, s, acct, nil
+}
+
+// ---- shared mailboxes: the mail tools take an optional account (a
+// shared mailbox the person is a member of, as the mail server lists it).
+
+// InAccount: embedded in the mail tools' inputs.
+type InAccount struct {
+	Account string `json:"account,omitempty" jsonschema:"a shared mailbox you are a member of (name or address from mailbox_list's accounts); default: your own"`
+}
+
+func (a InAccount) account() string { return strings.TrimSpace(a.Account) }
+
+type accountChooser interface{ account() string }
+
+type accountKey struct{}
+
+func withAccount(ctx context.Context, a string) context.Context {
+	return context.WithValue(ctx, accountKey{}, a)
+}
+
+func accountOf(ctx context.Context) string {
+	a, _ := ctx.Value(accountKey{}).(string)
+	return a
+}
+
+// sharedAccount: the id of the mail account the person named (by id or
+// name), if the session lists it for them.
+func sharedAccount(s *jmap.Session, want string) (string, error) {
+	var names []string
+	for id, a := range s.Accounts {
+		if _, ok := a.AccountCapabilities[jmap.Mail]; !ok {
+			continue
+		}
+		if id == want || strings.EqualFold(a.Name, want) {
+			return id, nil
+		}
+		if !a.IsPersonal {
+			names = append(names, a.Name)
+		}
+	}
+	slices.Sort(names)
+	if len(names) == 0 {
+		return "", fmt.Errorf("no shared mailbox %q: you aren't a member of any shared mailbox", oneLine(want, 80))
+	}
+	return "", fmt.Errorf("no shared mailbox %q; yours: %s", oneLine(want, 80), strings.Join(names, ", "))
+}
+
+// sharedMailboxes: the shared mail accounts the person may use.
+func sharedMailboxes(s *jmap.Session) []SharedMailbox {
+	out := []SharedMailbox{}
+	for id, a := range s.Accounts {
+		if _, ok := a.AccountCapabilities[jmap.Mail]; !ok || a.IsPersonal || id == s.PrimaryAccounts[jmap.Mail] {
+			continue
+		}
+		_, send := a.AccountCapabilities[jmap.Submission]
+		out = append(out, SharedMailbox{Name: a.Name, ReadOnly: a.IsReadOnly, CanSend: send && !a.IsReadOnly})
+	}
+	slices.SortFunc(out, func(a, b SharedMailbox) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
+type SharedMailbox struct {
+	Name     string `json:"name" jsonschema:"pass as account to the mail tools"`
+	ReadOnly bool   `json:"read_only,omitempty"`
+	CanSend  bool   `json:"can_send,omitempty"`
 }
 
 type mailbox struct {
@@ -102,6 +174,7 @@ func byRole(mbs []mailbox, role string) *mailbox {
 // ---- mail_search
 
 type MailSearchIn struct {
+	InAccount
 	Query  string `json:"query,omitempty" jsonschema:"words to look for in the message (empty: all)"`
 	From   string `json:"from,omitempty" jsonschema:"sender address or name contains this"`
 	Since  string `json:"since,omitempty" jsonschema:"only mail received on or after this date (YYYY-MM-DD)"`
@@ -225,6 +298,7 @@ func findMailbox(mbs []mailbox, name string) *mailbox {
 // ---- mail_read / mail_thread_read
 
 type MailReadIn struct {
+	InAccount
 	ID string `json:"id" jsonschema:"message id from mail_search"`
 }
 
@@ -411,6 +485,7 @@ func (t *Tools) mailThreadRead(ctx context.Context, _ *mcp.CallToolRequest, in M
 // ---- mail_attachment_read
 
 type MailAttachmentIn struct {
+	InAccount
 	ID    string `json:"id" jsonschema:"message id"`
 	Index int    `json:"index" jsonschema:"attachment index from mail_read"`
 }
@@ -461,10 +536,15 @@ type MailboxOut struct {
 }
 
 type MailboxListOut struct {
-	Folders []MailboxOut `json:"folders"`
+	Folders  []MailboxOut    `json:"folders"`
+	Accounts []SharedMailbox `json:"accounts,omitempty" jsonschema:"shared mailboxes you are a member of (only listed for your own mailbox)"`
 }
 
-func (t *Tools) mailboxList(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, MailboxListOut, error) {
+type MailboxListIn struct {
+	InAccount
+}
+
+func (t *Tools) mailboxList(ctx context.Context, _ *mcp.CallToolRequest, _ MailboxListIn) (*mcp.CallToolResult, MailboxListOut, error) {
 	tok, s, acct, err := t.mailSession(ctx)
 	if err != nil {
 		return nil, MailboxListOut{}, err
@@ -477,12 +557,16 @@ func (t *Tools) mailboxList(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 	for _, m := range mbs {
 		out.Folders = append(out.Folders, MailboxOut{m.Name, m.Role, m.UnreadEmails, m.TotalEmails})
 	}
+	if accountOf(ctx) == "" {
+		out.Accounts = sharedMailboxes(s)
+	}
 	return nil, out, nil
 }
 
 // ---- mail_draft_create / mail_draft_update (never sends)
 
 type DraftIn struct {
+	InAccount
 	To          []string `json:"to,omitempty" jsonschema:"recipients (address or Name <address>); for a reply defaults to the sender"`
 	Cc          []string `json:"cc,omitempty"`
 	Bcc         []string `json:"bcc,omitempty" jsonschema:"hidden recipients"`
@@ -557,6 +641,7 @@ func (t *Tools) mailDraftCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 type DraftUpdateIn struct {
+	InAccount
 	ID      string   `json:"id" jsonschema:"draft id"`
 	To      []string `json:"to,omitempty" jsonschema:"replaces the recipients if given"`
 	Cc      []string `json:"cc,omitempty"`
@@ -788,6 +873,15 @@ func (t *Tools) fromAddress(ctx context.Context, tok string, s *jmap.Session, ac
 				return address{i.Name, i.Email}, nil
 			}
 		}
+		if accountOf(ctx) != "" {
+			if len(got.List) > 0 {
+				return address{got.List[0].Name, got.List[0].Email}, nil
+			}
+			return address{}, fmt.Errorf("you can't send from this shared mailbox (it has no sending address for you; ask your administrator)")
+		}
+	}
+	if accountOf(ctx) != "" {
+		return address{}, fmt.Errorf("can't find this shared mailbox's sending address")
 	}
 	if me.Email == "" {
 		return address{}, fmt.Errorf("no sending address for this account")
@@ -798,6 +892,7 @@ func (t *Tools) fromAddress(ctx context.Context, tok string, s *jmap.Session, ac
 // ---- mail_flag / mail_move
 
 type MailFlagIn struct {
+	InAccount
 	IDs     []string `json:"ids" jsonschema:"message ids (max 100)"`
 	Read    *bool    `json:"read,omitempty" jsonschema:"true: mark read, false: mark unread"`
 	Starred *bool    `json:"starred,omitempty" jsonschema:"true: star, false: unstar"`
@@ -832,6 +927,7 @@ func boolOrNil(b bool) any {
 }
 
 type MailMoveIn struct {
+	InAccount
 	IDs    []string `json:"ids" jsonschema:"message ids (max 100)"`
 	Folder string   `json:"folder" jsonschema:"target folder name from mailbox_list, or archive/inbox"`
 }

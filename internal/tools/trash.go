@@ -17,6 +17,7 @@ import (
 const maxTrash = 25
 
 type MailTrashIn struct {
+	InAccount
 	IDs []string `json:"ids" jsonschema:"message ids (at most 25)"`
 }
 
@@ -72,6 +73,9 @@ func (t *Tools) mailTrash(ctx context.Context, req *mcp.CallToolRequest, in Mail
 		first = append(first, line(e, 50))
 	}
 	q := fmt.Sprintf("Move %d mail(s) to Trash: %s", len(move), strings.Join(first, "; "))
+	if a := accountOf(ctx); a != "" {
+		q = fmt.Sprintf("Move %d mail(s) in the SHARED mailbox %s to Trash: %s", len(move), oneLine(a, 60), strings.Join(first, "; "))
+	}
 	if len(move) > 2 {
 		q += fmt.Sprintf("; and %d more", len(move)-2)
 	}

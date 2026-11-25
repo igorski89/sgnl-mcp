@@ -96,6 +96,7 @@ func oneLine(s string, max int) string {
 }
 
 type MailSendIn struct {
+	InAccount
 	ID string `json:"id" jsonschema:"id of a draft in Drafts (from mail_draft_create or mail_draft_update)"`
 }
 
@@ -233,6 +234,10 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 		shown = append(shown, oneLine(x.email, 80))
 	}
 	first := fmt.Sprintf("Send %q to %s", oneLine(e.Subject, 60), strings.Join(shown, ", "))
+	if accountOf(ctx) != "" {
+		// From a shared mailbox: say so first, it goes out in the team's name.
+		first = fmt.Sprintf("Send AS %s %q to %s", oneLine(e.From[0].Email, 80), oneLine(e.Subject, 60), strings.Join(shown, ", "))
+	}
 	if len(rs) > 3 {
 		first += fmt.Sprintf(" and %d more", len(rs)-3)
 	}

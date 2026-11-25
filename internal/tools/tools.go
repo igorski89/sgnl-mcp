@@ -155,8 +155,14 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 		if req != nil && req.Extra != nil {
 			ctx = auth.WithRequest(ctx, req.Extra.TokenInfo)
 		}
+		if a, ok := any(in).(accountChooser); ok && a.account() != "" {
+			ctx = withAccount(ctx, a.account())
+		}
 		c, _ := auth.Person(ctx)
 		l := slog.With("tool", tool.Name, "kind", kind, "user", c.Username)
+		if a := accountOf(ctx); a != "" {
+			l = l.With("account", a)
+		}
 		// Who may use it is decided on the person as the login server has
 		// them now (not the groups of their original login), so removing
 		// someone takes effect within minutes.

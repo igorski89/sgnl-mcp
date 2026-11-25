@@ -94,6 +94,14 @@ The assistant can move mail between your folders. It can also move mail to **Tra
 
 Attachments are saved as new files, by default in your personal space.
 
+**Shared mailboxes**
+
+> "Anything new in the contact@ mailbox?"
+>
+> "Draft a reply from contact@ to that enquiry."
+
+If you're a member of a shared mailbox (for example contact@ or admin@), the assistant can read it, draft there and, after your confirmation, send from it. The confirmation then starts with "Send AS contact@…", because the mail goes out in the team's name and your colleagues in that mailbox see it in Sent.
+
 **Out of office**
 
 > "Set my out-of-office from 1 to 5 December: I'm away, Anna covers for me."

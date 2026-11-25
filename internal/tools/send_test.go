@@ -30,6 +30,8 @@ type fakeMail struct {
 	list        []any // Email/get answer instead of the draft
 	refuse      bool  // the server refuses the submission
 	moveFails   bool  // sent, but the move to Sent fails
+	shared      bool  // the session lists a shared mailbox "team@co.example" (account T)
+	acctIDs     []string
 }
 
 func newFakeMail() *fakeMail {
@@ -51,7 +53,12 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 			return
 		}
 		if r.Method == "GET" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Mail: "A"},
+			accts := map[string]any{"A": map[string]any{"name": "igor@co.example", "isPersonal": true, "accountCapabilities": map[string]any{jmap.Mail: map[string]any{}}}}
+			if f.shared {
+				accts["T"] = map[string]any{"name": "team@co.example", "accountCapabilities": map[string]any{jmap.Mail: map[string]any{}, jmap.Submission: map[string]any{}}}
+				accts["R"] = map[string]any{"name": "alerts@co.example", "isReadOnly": true, "accountCapabilities": map[string]any{jmap.Mail: map[string]any{}}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Mail: "A"}, "accounts": accts,
 				"downloadUrl": srv.URL + "/download/{accountId}/{blobId}/{name}?type={type}"})
 			return
 		}
@@ -66,6 +73,9 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 			_ = json.Unmarshal(mc[0], &name)
 			_ = json.Unmarshal(mc[1], &args)
 			_ = json.Unmarshal(mc[2], &id)
+			if a, ok := args["accountId"].(string); ok {
+				f.acctIDs = append(f.acctIDs, a)
+			}
 			var res any
 			switch name {
 			case "Mailbox/get":
@@ -79,6 +89,9 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 				}
 			case "Identity/get":
 				res = map[string]any{"list": []map[string]any{{"id": "id1", "email": "igor@co.example"}}}
+				if args["accountId"] == "T" {
+					res = map[string]any{"list": []map[string]any{{"id": "idT", "email": "team@co.example"}}}
+				}
 			case "Email/set":
 				f.updates = append(f.updates, args)
 				up, _ := args["update"].(map[string]any)
