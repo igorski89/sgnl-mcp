@@ -117,11 +117,11 @@ func checkSend(call Call) error {
 
 // Session: the parts of the JMAP session object we use.
 type Session struct {
-	APIURL          string            `json:"apiUrl"`
-	DownloadURL     string            `json:"downloadUrl"`
-	UploadURL       string            `json:"uploadUrl"`
-	Capabilities    map[string]any    `json:"capabilities"`
-	PrimaryAccounts map[string]string `json:"primaryAccounts"`
+	APIURL          string             `json:"apiUrl"`
+	DownloadURL     string             `json:"downloadUrl"`
+	UploadURL       string             `json:"uploadUrl"`
+	Capabilities    map[string]any     `json:"capabilities"`
+	PrimaryAccounts map[string]string  `json:"primaryAccounts"`
 	Accounts        map[string]Account `json:"accounts"`
 }
 
