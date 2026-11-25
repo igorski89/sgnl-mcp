@@ -31,12 +31,16 @@
 //	SGNL_MCP_ADMIN_GROUPS   who may use them (default admins), by the login server's current groups
 //	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
 //	SGNL_MCP_LOG            json: logs as JSON lines (for log collectors)
+//	SGNL_MCP_EXTRA_CA       a PEM file of extra CAs to trust for outgoing TLS (test
+//	                        servers with their own CA; macOS ignores SSL_CERT_FILE)
 //	SGNL_MCP_DEBUG          set: also log each token exchange (claims, never tokens);
 //	                        refused unless listening on loopback
 package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"log"
 	"log/slog"
 	"net"
@@ -92,6 +96,21 @@ func list(k string) []string {
 }
 
 func main() {
+	if f := os.Getenv("SGNL_MCP_EXTRA_CA"); f != "" {
+		pem, err := os.ReadFile(f)
+		if err != nil {
+			log.Fatalf("sgnl-mcp: SGNL_MCP_EXTRA_CA: %v", err)
+		}
+		pool, err := x509.SystemCertPool()
+		if err != nil || pool == nil {
+			pool = x509.NewCertPool()
+		}
+		if !pool.AppendCertsFromPEM(pem) {
+			log.Fatalf("sgnl-mcp: SGNL_MCP_EXTRA_CA: no certificate in %s", f)
+		}
+		tr := http.DefaultTransport.(*http.Transport)
+		tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	}
 	label := env("SGNL_MCP_LABEL", "")
 	public := env("SGNL_MCP_PUBLIC_URL", "http://localhost:8765/mcp")
 	addr := env("SGNL_MCP_ADDR", "127.0.0.1:8765")
