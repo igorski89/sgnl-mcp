@@ -22,13 +22,16 @@ needs your click, staying safe).
 | `mail_read` | mail (JMAP) | one message as plain text (hidden text removed), attachments listed |
 | `mail_thread_read` | mail (JMAP) | a whole conversation |
 | `mail_attachment_read` | mail (JMAP) | an attachment as text |
+| `mail_attachment_save` | mail → files | an attachment as a new file in the drive (personal space by default; shared space: confirmation) |
 | `mailbox_list` | mail (JMAP) | folders with unread counts |
 | `mail_draft_create` | mail (JMAP) | new mail, reply, reply-all or forward, saved in Drafts |
 | `mail_draft_update` | mail (JMAP) | change a draft (replaced by a new draft) |
 | `mail_flag` | mail (JMAP) | read / unread, flagged |
 | `mail_move` | mail (JMAP) | move between folders; never to Trash, Junk, Sent or Drafts |
+| `mail_trash` | mail (JMAP) | move mail to Trash (at most 25), **only after the person confirms**; restorable |
 | `mail_send` | mail (JMAP) | send a draft, **only after the person confirms** |
 | `event_list` | calendar (JMAP) | events in a date range |
+| `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
 | `event_create` | calendar (JMAP) | a private event, no participants |
 | `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |
 | `availability_get` | calendar (JMAP) | colleagues' free/busy |
@@ -125,6 +128,8 @@ only on loopback.
   before), plus a warning when outside mail was read shortly before.
   Sender and Reply-To must be the person's own; at most 50 recipients;
   drafts stay in Drafts; nothing is deleted except a draft being replaced.
+  `mail_trash` moves mail to Trash (restorable) after the person confirms
+  the listed mails; nothing is ever destroyed.
 - Calendar: events with attendees (which send invitations) only through
   `event_invite`, after the person confirms; the mail server makes the
   person the organizer, the gateway can't set organizer or reply address.

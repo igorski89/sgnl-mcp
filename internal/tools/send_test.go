@@ -1,9 +1,9 @@
 package tools
 
 import (
-	"fmt"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -70,7 +70,7 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 			switch name {
 			case "Mailbox/get":
 				res = map[string]any{"list": []map[string]any{{"id": "dr", "name": "Drafts", "role": "drafts"}, {"id": "se", "name": "Sent", "role": "sent"},
-					{"id": "in", "name": "Inbox", "role": "inbox"}, {"id": "te", "name": "Test"}}}
+					{"id": "in", "name": "Inbox", "role": "inbox"}, {"id": "te", "name": "Test"}, {"id": "tr", "name": "Trash", "role": "trash"}}}
 			case "Email/get":
 				if f.list != nil {
 					res = map[string]any{"list": f.list}

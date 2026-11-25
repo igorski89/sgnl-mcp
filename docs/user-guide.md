@@ -17,7 +17,8 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | **Send an email** | **Yes**: you see a confirmation and press Accept |
 | **Share a file or folder with a colleague** | **Yes**: you see a confirmation and press Accept |
 | **Save a file into a shared space** | **Yes**: you see a confirmation and press Accept |
-| Delete anything, create public links, set up forwarding | **Never**: it can't do these at all |
+| **Move mail to Trash** | **Yes**: you see which mails and press Accept (you can restore them from Trash) |
+| Delete anything for good, create public links, set up forwarding | **Never**: it can't do these at all |
 
 ## Getting started
 
@@ -86,7 +87,11 @@ Drafts land in your **Drafts** folder. You can review them there, edit them in y
 >
 > "Star the mail from Anna about the contract."
 
-The assistant can move mail between your folders, but not into Trash, so nothing ever gets deleted.
+The assistant can move mail between your folders. It can also move mail to **Trash**, after a confirmation listing each mail; you can restore it from Trash in your mail app.
+
+> "Save the PDF from Anna's invoice mail into my files."
+
+Attachments are saved as new files, by default in your personal space.
 
 **Sending**
 
@@ -124,6 +129,8 @@ The first line always names the subject, the recipients and any attachments (som
 > "Block two hours of focus time tomorrow morning."
 >
 > "When are Anna and I both free for an hour this week?"
+>
+> "Who has accepted Thursday's Q4 review?"
 
 > "Set up a 30-minute meeting with Hugo on Thursday at 10 about the Q4 review."
 
@@ -203,6 +210,6 @@ In an app that can't show confirmations, the assistant tells you it can't send. 
 
 **Is a draft sent automatically?** No. A draft is sent only when you ask, see the confirmation and press Accept, or when you send it yourself from your mail app.
 
-**Can it delete things by mistake?** No. Deleting mail, events or files isn't possible through SGNL at all. When it changes a text file it can remove text from it, but only the changes you saw and accepted.
+**Can it delete things by mistake?** No. Nothing can be deleted for good through SGNL. It can move mail to Trash, but only the mails you saw in the confirmation and accepted, and you can restore them. When it changes a text file it can remove text from it, again only as you accepted, and the previous version is kept.
 
 **Where can I see what it did?** Drafts are in your Drafts folder, sent mail is in Sent, files are in your spaces, and calendar entries are in your calendar. Everything is visible in your usual apps.

@@ -853,7 +853,7 @@ func (t *Tools) mailMove(ctx context.Context, _ *mcp.CallToolRequest, in MailMov
 		return nil, MailChangeOut{}, fmt.Errorf("no folder %q (see mailbox_list)", in.Folder)
 	}
 	if mb.Role == "trash" || mb.Role == "junk" || mb.Role == "drafts" || mb.Role == "sent" {
-		return nil, MailChangeOut{}, fmt.Errorf("moving to %s isn't offered (deleting comes later, with a confirmation)", mb.Name)
+		return nil, MailChangeOut{}, fmt.Errorf("moving to %s isn't offered here (for Trash use mail_trash)", mb.Name)
 	}
 	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, jmap.Call{Method: "Email/get",
 		Args: map[string]any{"accountId": acct, "ids": in.IDs, "properties": []string{"id", "keywords", "mailboxIds"}}})

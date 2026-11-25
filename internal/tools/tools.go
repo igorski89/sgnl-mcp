@@ -78,7 +78,9 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "mail_flag", Annotations: wr,
 		Description: "Mark messages read/unread and/or starred/unstarred."}, t.mailFlag)
 	add(t, s, &mcp.Tool{Name: "mail_move", Annotations: wr,
-		Description: "Move messages to another folder (e.g. Archive or one of your folders). Not to Trash: deleting isn't offered yet."}, t.mailMove)
+		Description: "Move messages to another folder (e.g. Archive or one of your folders). Not to Trash: use mail_trash."}, t.mailMove)
+	add(t, s, &mcp.Tool{Name: "mail_trash", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
+		Description: "Move messages to Trash (at most 25). The person is asked in their app first, with each message shown; nothing moves without their yes. They can be restored from Trash; nothing is deleted for good."}, t.mailTrash)
 
 	// Calendar
 	add(t, s, &mcp.Tool{Name: "event_list", Annotations: ro,
