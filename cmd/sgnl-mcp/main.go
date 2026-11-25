@@ -26,6 +26,8 @@
 //	SGNL_MCP_TRASH_DAYS     after how many days the mail server empties Trash (told
 //	                        to the person when mail goes to Trash; unset: not said)
 //	SGNL_MCP_FILES_TRASH_DAYS the same for the file app's trash bin
+//	SGNL_MCP_CONFIRM_FAST_OK login client ids whose instant "yes" is accepted (an
+//	                        accept under 1.5 s is otherwise refused as the app's own)
 //	SGNL_MCP_CONFIRM_CLIENTS login client ids whose apps may ask the person to confirm
 //	                        (send, shared-space save); others can't do those. Unset: all
 //	SGNL_MCP_PROBES         for aud_check: other apps as name=URL, comma-separated
@@ -172,6 +174,7 @@ func main() {
 	t.Access = access
 	t.InternalDomains = list("SGNL_MCP_INTERNAL_DOMAINS")
 	t.ConfirmClients = list("SGNL_MCP_CONFIRM_CLIENTS")
+	t.ConfirmFastOK = list("SGNL_MCP_CONFIRM_FAST_OK")
 	if d := os.Getenv("SGNL_MCP_TRASH_DAYS"); d != "" {
 		n, err := strconv.Atoi(d)
 		if err != nil || n < 1 {

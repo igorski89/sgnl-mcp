@@ -32,6 +32,9 @@ type Tools struct {
 	// trusted to show a confirmation to the person rather than answer it
 	// themselves; others can't send or save to shared spaces. Empty: all.
 	ConfirmClients []string
+	// ConfirmFastOK: trusted clients whose instant answers are accepted
+	// (the person runs them without approvals on purpose).
+	ConfirmFastOK []string
 	// TrashDays: after how many days the mail server empties Trash (0:
 	// unknown); mail_trash tells the person.
 	TrashDays int

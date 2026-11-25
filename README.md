@@ -46,7 +46,12 @@ needs your click, staying safe).
 | `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx) |
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
 | `file_share` | files (OpenCloud) | share a file or folder in the personal space with one colleague (view/edit), **only after the person confirms**; no links |
-| `file_save` | files (OpenCloud) | a new text file, never overwriting; **shared spaces need a confirmation** |
+| `file_save` | files (OpenCloud) | a new text file, never overwriting; **a project space or shared folder needs a confirmation** |
+| `folder_create` | files (OpenCloud) | a new folder (same rule) |
+| `file_move` | files (OpenCloud) | rename/move within a space, never over a name; **asks where others see it** |
+| `file_trash` / `file_trash_list` / `file_restore` | files (OpenCloud) | to the trash bin (**always asks**), list it, restore to the old place |
+| `file_versions` / `file_version_restore` | files (OpenCloud) | a file's versions; restore one (**asks**; the current content becomes a version) |
+| `file_shares` / `file_unshare` | files (OpenCloud) | what's shared with/by the person; stop one share (**asks**) |
 | `file_edit` | files (OpenCloud) | change a text file in the personal space (exact replacements or an append), **only after the person confirms**, and only if the file is still the version shown |
 
 ## Admin endpoint
@@ -162,10 +167,17 @@ only on loopback.
   applies exact replacements to the whole file as it is on the server
   (larger than 2 MB is refused, never cut), and writes only if the file is
   still the version shown: checked just before, and sent as If-Match
-  (`Overwrite` is the client's only way to replace a file). No deleting,
-  renaming or moving. Sharing: one colleague at a time, from the personal space,
+  (`Overwrite` is the client's only way to replace a file). Sharing: one colleague at a time, from the personal space,
   view or edit, after the person confirms; the client's only POST is that
-  invite (no public links, no unsharing).
+  invite (no public links); `file_unshare` removes one grant (its own
+  DELETE path) after the person confirms. Moves, the trash bin
+  (`file_trash` always asks; DELETE never reaches a trash bin), restore
+  and version restore each have their own client path; anything written
+  where others see it (project space, or a folder the person shares) asks
+  first.
+- An accept faster than a person can read (1.5 s) is refused, except for
+  clients in `SGNL_MCP_CONFIRM_FAST_OK` (run without approvals on
+  purpose): some clients answer such questions by themselves.
 - Confirmations are asked of the person through MCP elicitation and bound
   to the exact request; the model only sees the outcome. Clients without
   elicitation can't do confirmed actions.

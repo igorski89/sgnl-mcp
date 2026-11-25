@@ -179,13 +179,23 @@ The assistant searches your address book and the company directory.
 >
 > "Share my Q4 folder with Hugo, read-only."
 
-Sharing works for files and folders in your personal space, with one colleague at a time, for viewing (the default) or editing. The confirmation's first line says what (FILE or FOLDER), with whom, and whether they can change it. Public links ("anyone with the link") can't be made through the assistant. To stop sharing, use your file app.
+Sharing works for files and folders in your personal space, with one colleague at a time, for viewing (the default) or editing. The confirmation's first line says what (FILE or FOLDER), with whom, and whether they can change it. Public links ("anyone with the link") can't be made through the assistant. To stop sharing, ask ("Stop sharing the Q4 folder with Hugo"): it asks you first.
 
 > "Add today's decisions to the end of notes.md."
 >
 > "In my packing list, change 'two shirts' to 'three shirts'."
 
-The assistant can save **new** text files, and change text files (Markdown, plain text, CSV, JSON, YAML) in your **personal** space. Before a change is written, a confirmation shows the file and each change (what is replaced, removed or added). If the file changed in the meantime, for example because you edited it yourself, nothing is written and the assistant has to read it again. The previous version is always kept: in your file app, open the file's **Versions** to see or restore it. It never deletes, renames or moves files, and it can't change files in shared spaces or documents like Word or PDF. Saving a new file into a **shared** space shows a confirmation first, the same way sending does, because your colleagues will see the file.
+The assistant can save **new** text files, and change text files (Markdown, plain text, CSV, JSON, YAML) in your **personal** space. Before a change is written, a confirmation shows the file and each change (what is replaced, removed or added). If the file changed in the meantime, for example because you edited it yourself, nothing is written and the assistant has to read it again. The previous version is always kept: in your file app, open the file's **Versions** to see or restore it. It can't change files in shared spaces or documents like Word or PDF.
+
+> "Rename notes.md to Q4 notes.md and move it into the Q4 folder."
+>
+> "What's in my trash bin? Restore the budget file."
+>
+> "Go back to yesterday's version of the plan."
+>
+> "What do I share, and with whom?"
+
+It can create folders, move and rename within a space, move files and folders to the **trash bin** and restore them, and restore an earlier version of a file. Moving to the trash bin and restoring a version always ask you first; nothing is ever deleted for good. Anything that others will see (saving, moving, editing or restoring into a project space or a folder you share) also asks you first, and the first line says so.
 
 ### Putting it together
 

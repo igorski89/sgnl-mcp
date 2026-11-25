@@ -40,6 +40,12 @@ var confirmKey = func() []byte {
 
 const confirmTTL = 10 * time.Minute
 
+// minAnswer: no person accepts a question faster than this.
+const minAnswer = 1500 * time.Millisecond
+
+// confirmNow: the clock (a variable for tests).
+var confirmNow = time.Now
+
 // confirmState binds an answer to this tool, these exact arguments and this
 // person, until a deadline: an accept can't be replayed for another action.
 func confirmState(tool string, args []byte, who, bind string, until int64) string {
@@ -94,7 +100,7 @@ func (t *Tools) confirm(ctx context.Context, req *mcp.CallToolRequest, message, 
 		who = c.Username
 	}
 	if req.Params.InputResponses == nil {
-		until := time.Now().Add(confirmTTL).Unix()
+		until := confirmNow().Add(confirmTTL).UnixMilli()
 		return &mcp.CallToolResult{
 			InputRequests: mcp.InputRequestMap{"confirm": &mcp.ElicitParams{
 				Message:         message,
@@ -109,7 +115,8 @@ func (t *Tools) confirm(ctx context.Context, req *mcp.CallToolRequest, message, 
 	if perr != nil || !hmac.Equal([]byte(want), []byte(req.Params.RequestState)) {
 		return nil, false, fmt.Errorf("the confirmation doesn't match this request, or what it shows has changed since: ask again")
 	}
-	if time.Now().Unix() > until {
+	now := confirmNow().UnixMilli()
+	if now > until {
 		return nil, false, fmt.Errorf("the confirmation expired: ask again")
 	}
 	action := "none"
@@ -117,6 +124,17 @@ func (t *Tools) confirm(ctx context.Context, req *mcp.CallToolRequest, message, 
 		action = r.Action
 	}
 	ok = action == "accept"
+	// A yes faster than anyone can read the question came from the client,
+	// not the person (some clients answer such questions by themselves).
+	// Clients the person runs without approvals on purpose are exempt.
+	asked := until - confirmTTL.Milliseconds()
+	if ok && now-asked < minAnswer.Milliseconds() {
+		c, _ := auth.Person(ctx)
+		if !slices.Contains(t.ConfirmFastOK, c.Client()) {
+			slog.Warn("confirmation refused: answered too fast to be a person", "tool", req.Params.Name, "user", who, "client", c.Client(), "ms", now-asked)
+			return nil, false, fmt.Errorf("the answer came back faster than a person can read the question, so the app likely answered by itself: nothing was done. Ask the person to try again and read the question")
+		}
+	}
 	slog.Info("person answered", "tool", req.Params.Name, "user", who, "action", action,
 		"outcome", map[bool]string{true: "accepted", false: "declined"}[ok])
 	return nil, ok, nil

@@ -125,7 +125,7 @@ func (t *Tools) fileShare(ctx context.Context, req *mcp.CallToolRequest, in File
 	verb := map[string]string{"view": "VIEW", "edit": "VIEW AND CHANGE"}[access]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Share the %s %q with %s, who can %s it?\n\n", kind, name, who, verb)
-	b.WriteString("They see it under \"Shared with me\" in their file app. You can stop sharing in your file app.\n")
+	b.WriteString("They see it under \"Shared with me\" in their file app. You can stop sharing later (ask the assistant, or in your file app).\n")
 	if t.outside.recent(me.Username) {
 		b.WriteString("\nWARNING: your assistant read email from outside the company in the last 30 minutes; make sure this is what you asked for.\n")
 	}
