@@ -11,10 +11,11 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | Read mail, calendar, contacts and files | No |
 | Write drafts, flag and move mail | No: it's all private to you, and nothing leaves your mailbox |
 | Put private entries in your calendar | No |
+| **Invite people to a meeting** | **Yes**: you see a confirmation and press Accept |
 | Save new files in your personal space | No |
 | **Send an email** | **Yes**: you see a confirmation and press Accept |
 | **Save a file into a shared space** | **Yes**: you see a confirmation and press Accept |
-| Delete anything, invite people, share links, set up forwarding | **Never**: it can't do these at all |
+| Delete anything, create public links, set up forwarding | **Never**: it can't do these at all |
 
 ## Getting started
 
@@ -122,7 +123,9 @@ The first line always names the subject, the recipients and any attachments (som
 >
 > "When are Anna and I both free for an hour this week?"
 
-The entries the assistant creates are private to you: it never invites anyone. For colleagues it sees only *when* they're busy, never what their meetings are.
+> "Set up a 30-minute meeting with Hugo on Thursday at 10 about the Q4 review."
+
+Private entries stay private. When you ask for a meeting with others, the assistant shows a confirmation first, like for sending email: the first line names the people, the title and the time, and marks anyone outside the company. After Accept, the event is in your calendar and the others get an invitation by email. For colleagues it sees only *when* they're busy, never what their meetings are.
 
 ### Contacts
 

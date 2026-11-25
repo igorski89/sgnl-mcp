@@ -80,7 +80,9 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "event_list", Annotations: ro,
 		Description: "Your calendar events in a date range (default: the next 7 days)."}, t.eventList)
 	add(t, s, &mcp.Tool{Name: "event_create", Annotations: wr,
-		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). Never with other people: no invitations are sent."}, t.eventCreate)
+		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). No one is invited: for a meeting with others use event_invite."}, t.eventCreate)
+	add(t, s, &mcp.Tool{Name: "event_invite", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
+		Description: "Create a meeting in your calendar and invite people to it: they get an invitation by email. The person is asked in their app first, with every attendee shown; nothing is created or sent without their yes. Check free times first with availability_get."}, t.eventInvite)
 	add(t, s, &mcp.Tool{Name: "availability_get", Annotations: ro,
 		Description: "When colleagues are busy (free/busy only, never what their events are), e.g. to find a common free slot. Times in UTC."}, t.availabilityGet)
 

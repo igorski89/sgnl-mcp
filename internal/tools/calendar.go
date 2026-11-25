@@ -162,16 +162,14 @@ type EventCreateOut struct {
 	Note string `json:"note"`
 }
 
-func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in EventCreateIn) (*mcp.CallToolResult, EventCreateOut, error) {
-	if strings.TrimSpace(in.Title) == "" {
-		return nil, EventCreateOut{}, fmt.Errorf("title is required")
-	}
+// buildEvent: the JSCalendar event for in (no calendar, no participants).
+func (t *Tools) buildEvent(in EventCreateIn) (map[string]any, error) {
 	tz := in.TimeZone
 	if tz == "" {
 		tz = t.TZ
 	}
 	if _, err := time.LoadLocation(tz); err != nil {
-		return nil, EventCreateOut{}, fmt.Errorf("time_zone: unknown zone %q", tz)
+		return nil, fmt.Errorf("time_zone: unknown zone %q", tz)
 	}
 	e := map[string]any{"@type": "Event", "title": in.Title, "timeZone": tz}
 	if d, err := time.Parse("2006-01-02T15:04", in.Start); err == nil {
@@ -180,7 +178,7 @@ func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in Even
 			m = 60
 		}
 		if m > 14*24*60 {
-			return nil, EventCreateOut{}, fmt.Errorf("minutes: at most 14 days")
+			return nil, fmt.Errorf("minutes: at most 14 days")
 		}
 		e["start"] = d.Format("2006-01-02T15:04:05")
 		e["duration"] = fmt.Sprintf("PT%dM", m)
@@ -193,7 +191,7 @@ func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in Even
 		e["showWithoutTime"] = true
 		e["duration"] = fmt.Sprintf("P%dD", days)
 	} else {
-		return nil, EventCreateOut{}, fmt.Errorf("start: use YYYY-MM-DDTHH:MM or YYYY-MM-DD")
+		return nil, fmt.Errorf("start: use YYYY-MM-DDTHH:MM or YYYY-MM-DD")
 	}
 	if in.Location != "" {
 		e["locations"] = map[string]any{"l": map[string]string{"@type": "Location", "name": in.Location}}
@@ -201,13 +199,14 @@ func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in Even
 	if in.Description != "" {
 		e["description"] = in.Description
 	}
-	tok, s, acct, err := t.calSession(ctx)
-	if err != nil {
-		return nil, EventCreateOut{}, err
-	}
+	return e, nil
+}
+
+// defaultCalendar: the person's default calendar (else their first).
+func (t *Tools) defaultCalendar(ctx context.Context, tok string, s *jmap.Session, acct string) (string, error) {
 	r, err := t.JMAP.Invoke(ctx, tok, s, calUsing, jmap.Call{Method: "Calendar/get", Args: map[string]any{"accountId": acct, "properties": []string{"id", "isDefault"}}})
 	if err != nil {
-		return nil, EventCreateOut{}, err
+		return "", err
 	}
 	var cals struct {
 		List []struct {
@@ -217,7 +216,7 @@ func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in Even
 	}
 	_ = json.Unmarshal(r[0], &cals)
 	if len(cals.List) == 0 {
-		return nil, EventCreateOut{}, fmt.Errorf("no calendar")
+		return "", fmt.Errorf("no calendar")
 	}
 	cal := cals.List[0].ID
 	for _, c := range cals.List {
@@ -225,8 +224,27 @@ func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in Even
 			cal = c.ID
 		}
 	}
+	return cal, nil
+}
+
+func (t *Tools) eventCreate(ctx context.Context, _ *mcp.CallToolRequest, in EventCreateIn) (*mcp.CallToolResult, EventCreateOut, error) {
+	if strings.TrimSpace(in.Title) == "" {
+		return nil, EventCreateOut{}, fmt.Errorf("title is required")
+	}
+	e, err := t.buildEvent(in)
+	if err != nil {
+		return nil, EventCreateOut{}, err
+	}
+	tok, s, acct, err := t.calSession(ctx)
+	if err != nil {
+		return nil, EventCreateOut{}, err
+	}
+	cal, err := t.defaultCalendar(ctx, tok, s, acct)
+	if err != nil {
+		return nil, EventCreateOut{}, err
+	}
 	e["calendarIds"] = map[string]bool{cal: true}
-	r, err = t.JMAP.Invoke(ctx, tok, s, calUsing, jmap.Call{Method: "CalendarEvent/set", Args: map[string]any{"accountId": acct, "create": map[string]any{"e": e}}})
+	r, err := t.JMAP.Invoke(ctx, tok, s, calUsing, jmap.Call{Method: "CalendarEvent/set", Args: map[string]any{"accountId": acct, "create": map[string]any{"e": e}}})
 	if err != nil {
 		return nil, EventCreateOut{}, err
 	}

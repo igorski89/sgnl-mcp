@@ -75,3 +75,56 @@ func TestSendOnlyAsMailSend(t *testing.T) {
 		}
 	}
 }
+
+// Events with participants (which send invitations) only as event_invite.
+func TestInviteOnlyAsEventInvite(t *testing.T) {
+	att := func(mod func(p map[string]any)) map[string]any {
+		p := map[string]any{"@type": "Participant", "email": "h@co.example", "sendTo": map[string]string{"imip": "mailto:h@co.example"},
+			"roles": map[string]bool{"attendee": true}, "participationStatus": "needs-action", "expectReply": true}
+		if mod != nil {
+			mod(p)
+		}
+		return map[string]any{"accountId": "A", "sendSchedulingMessages": true,
+			"create": map[string]any{"e": map[string]any{"title": "x", "participants": map[string]any{"a0": p}}}}
+	}
+	if err := check(Call{Method: "CalendarEvent/set", Invite: true, Args: att(nil)}); err != nil {
+		t.Fatalf("a valid invite refused: %v", err)
+	}
+	if check(Call{Method: "CalendarEvent/set", Args: att(nil)}) == nil {
+		t.Error("participants without Invite allowed")
+	}
+	if check(Call{Method: "CalendarEvent/set", Args: map[string]any{"accountId": "A", "sendSchedulingMessages": true,
+		"create": map[string]any{"e": map[string]any{"title": "x"}}}}) == nil {
+		t.Error("scheduling messages without Invite allowed")
+	}
+	for name, mod := range map[string]func(p map[string]any){
+		"organizer role": func(p map[string]any) { p["roles"] = map[string]bool{"owner": true} },
+		"other inbox":    func(p map[string]any) { p["sendTo"] = map[string]string{"imip": "mailto:evil@x.example"} },
+		"other method":   func(p map[string]any) { p["sendTo"] = map[string]string{"web": "https://x"} },
+		"unknown field":  func(p map[string]any) { p["delegatedTo"] = map[string]bool{"x": true} },
+	} {
+		if check(Call{Method: "CalendarEvent/set", Invite: true, Args: att(mod)}) == nil {
+			t.Errorf("%s allowed", name)
+		}
+	}
+	two := att(nil)
+	two["create"].(map[string]any)["f"] = two["create"].(map[string]any)["e"]
+	if check(Call{Method: "CalendarEvent/set", Invite: true, Args: two}) == nil {
+		t.Error("two events in one invite allowed")
+	}
+	up := att(nil)
+	up["update"] = map[string]any{"old": map[string]any{"title": "y"}}
+	if check(Call{Method: "CalendarEvent/set", Invite: true, Args: up}) == nil {
+		t.Error("an update alongside allowed")
+	}
+	noSched := att(nil)
+	delete(noSched, "sendSchedulingMessages")
+	if check(Call{Method: "CalendarEvent/set", Invite: true, Args: noSched}) == nil {
+		t.Error("an invite without scheduling allowed")
+	}
+	rt := att(nil)
+	rt["create"].(map[string]any)["e"].(map[string]any)["replyTo"] = map[string]string{"imip": "mailto:evil@x.example"}
+	if check(Call{Method: "CalendarEvent/set", Invite: true, Args: rt}) == nil {
+		t.Error("a replyTo from the gateway allowed")
+	}
+}

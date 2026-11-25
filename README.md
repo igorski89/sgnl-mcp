@@ -30,6 +30,7 @@ needs your click, staying safe).
 | `mail_send` | mail (JMAP) | send a draft, **only after the person confirms** |
 | `event_list` | calendar (JMAP) | events in a date range |
 | `event_create` | calendar (JMAP) | a private event, no participants |
+| `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |
 | `availability_get` | calendar (JMAP) | colleagues' free/busy |
 | `contact_search` | contacts (JMAP) | address book and company directory |
 | `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
@@ -122,7 +123,9 @@ only on loopback.
   before), plus a warning when outside mail was read shortly before.
   Sender and Reply-To must be the person's own; at most 50 recipients;
   drafts stay in Drafts; nothing is deleted except a draft being replaced.
-- Calendar: private events only (no participants, so no invitations).
+- Calendar: events with attendees (which send invitations) only through
+  `event_invite`, after the person confirms; the mail server makes the
+  person the organizer, the gateway can't set organizer or reply address.
 - Files: only new files; saving into a shared space needs the person's
   confirmation.
 - Confirmations are asked of the person through MCP elicitation and bound

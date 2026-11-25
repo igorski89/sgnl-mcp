@@ -148,6 +148,11 @@ type Call struct {
 	// come from the draft's own headers, as shown to the person), and on
 	// success only moving the mail from Drafts to Sent.
 	Send bool
+	// Invite: the only CalendarEvent/set with participants, for
+	// event_invite after the person confirmed: exactly one create, the
+	// attendees each only by email (imip), and sendSchedulingMessages, so
+	// the mail server adds the person as organizer and sends the invitations.
+	Invite bool
 }
 
 // check enforces the limits above on one call.
@@ -166,7 +171,13 @@ func check(call Call) error {
 			return fmt.Errorf("jmap: %s destroy is not allowed", call.Method)
 		}
 	}
+	if call.Method == "CalendarEvent/set" && call.Invite {
+		return checkInvite(call)
+	}
 	if call.Method == "CalendarEvent/set" {
+		if v, ok := call.Args["sendSchedulingMessages"]; ok && v != false {
+			return fmt.Errorf("jmap: scheduling messages only from event_invite")
+		}
 		for _, k := range []string{"create", "update"} {
 			m, _ := call.Args[k].(map[string]any)
 			for _, ev := range m {
@@ -175,6 +186,54 @@ func check(call Call) error {
 					if f == "participants" || strings.HasPrefix(f, "participants/") || f == "replyTo" {
 						return fmt.Errorf("jmap: events with participants are not allowed (they send invitations)")
 					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// checkInvite: see Call.Invite.
+func checkInvite(call Call) error {
+	for k := range call.Args {
+		if k != "accountId" && k != "create" && k != "sendSchedulingMessages" {
+			return fmt.Errorf("jmap: invite: %s is not allowed", k)
+		}
+	}
+	if call.Args["sendSchedulingMessages"] != true {
+		return fmt.Errorf("jmap: invite: without sendSchedulingMessages")
+	}
+	c, _ := call.Args["create"].(map[string]any)
+	if len(c) != 1 {
+		return fmt.Errorf("jmap: invite: exactly one event")
+	}
+	for _, ev := range c {
+		e, _ := ev.(map[string]any)
+		for f := range e {
+			if f == "replyTo" || f == "organizerCalendarAddress" {
+				return fmt.Errorf("jmap: invite: %s is set by the mail server, not the gateway", f)
+			}
+		}
+		ps, _ := e["participants"].(map[string]any)
+		if len(ps) == 0 {
+			return fmt.Errorf("jmap: invite: no participants")
+		}
+		for _, pv := range ps {
+			p, _ := pv.(map[string]any)
+			for k, v := range p {
+				switch k {
+				case "@type", "email", "name", "participationStatus", "expectReply":
+				case "roles":
+					if r, _ := v.(map[string]bool); len(r) != 1 || !r["attendee"] {
+						return fmt.Errorf("jmap: invite: participants may only be attendees")
+					}
+				case "sendTo":
+					st, _ := v.(map[string]string)
+					if len(st) != 1 || !strings.HasPrefix(st["imip"], "mailto:") || st["imip"] != "mailto:"+fmt.Sprint(p["email"]) {
+						return fmt.Errorf("jmap: invite: an attendee is reached only at their own email")
+					}
+				default:
+					return fmt.Errorf("jmap: invite: participant field %s is not allowed", k)
 				}
 			}
 		}
