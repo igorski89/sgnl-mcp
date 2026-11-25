@@ -15,14 +15,21 @@ import (
 // again just before writing, and sends it as If-Match (OpenCloud refuses
 // the PUT with 412 when the file changed in between).
 
+// davFile: a file path the edit calls accept: a DAV path, no "..", and no
+// "?" or "#" (which would make the request reach a different file than
+// the one named).
+func davFile(path string) bool {
+	return strings.HasPrefix(path, davPrefix) && !strings.Contains(path, "..") && !strings.ContainsAny(path, "?#") && !strings.HasSuffix(path, "/")
+}
+
 // ErrChanged: the file is no longer the version that was read.
 var ErrChanged = errors.New("the file changed since it was read")
 
 // ReadForEdit: the whole file and its etag. A file larger than max is
 // refused rather than shortened, so an edit never drops the rest.
 func (c *Client) ReadForEdit(ctx context.Context, token, path string, max int64) (data []byte, etag string, err error) {
-	if !strings.HasPrefix(path, davPrefix) || strings.Contains(path, "..") {
-		return nil, "", fmt.Errorf("path must come from folder_list or file_search")
+	if !davFile(path) {
+		return nil, "", fmt.Errorf("path must be a file from folder_list or file_search")
 	}
 	resp, err := c.do(ctx, token, "GET", path, nil, nil)
 	if err != nil {
@@ -49,8 +56,8 @@ func (c *Client) ReadForEdit(ctx context.Context, token, path string, max int64)
 
 // Etag: the file's current etag (PROPFIND, depth 0).
 func (c *Client) Etag(ctx context.Context, token, path string) (string, error) {
-	if !strings.HasPrefix(path, davPrefix) || strings.Contains(path, "..") {
-		return "", fmt.Errorf("path must come from folder_list or file_search")
+	if !davFile(path) {
+		return "", fmt.Errorf("path must be a file from folder_list or file_search")
 	}
 	body := `<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>`
 	resp, err := c.do(ctx, token, "PROPFIND", path, strings.NewReader(body), map[string]string{"Depth": "0", "Content-Type": "application/xml"})
@@ -87,7 +94,7 @@ func (c *Client) Etag(ctx context.Context, token, path string) (string, error) {
 // Overwrite: replace the content of the file at path, only if it is still
 // at etag. Returns the new etag.
 func (c *Client) Overwrite(ctx context.Context, token, path, etag, ctype string, data []byte) (string, error) {
-	if !strings.HasPrefix(path, davPrefix) || strings.Contains(path, "..") || strings.HasSuffix(path, "/") {
+	if !davFile(path) {
 		return "", fmt.Errorf("path must be a file from folder_list or file_search")
 	}
 	if etag == "" {
@@ -97,7 +104,7 @@ func (c *Client) Overwrite(ctx context.Context, token, path, etag, ctype string,
 	if err != nil {
 		return "", err
 	}
-	if now != etag {
+	if !sameEtag(now, etag) {
 		return "", ErrChanged
 	}
 	resp, err := c.send(ctx, token, "PUT", path, bytes.NewReader(data), map[string]string{"If-Match": etag, "Content-Type": ctype})
@@ -120,8 +127,15 @@ func (c *Client) Overwrite(ctx context.Context, token, path, etag, ctype string,
 	if err != nil {
 		return "", fmt.Errorf("files: saved, but can't confirm the new version: %w", err)
 	}
-	if after == etag {
+	if sameEtag(after, etag) {
 		return "", fmt.Errorf("files: the server answered %d but the file's version didn't change", resp.StatusCode)
 	}
 	return after, nil
+}
+
+// sameEtag: GET's ETag header and PROPFIND's getetag name the same version
+// (reva quotes the latter itself; compare without quotes or W/).
+func sameEtag(a, b string) bool {
+	n := func(s string) string { return strings.Trim(strings.TrimPrefix(strings.TrimSpace(s), "W/"), `"`) }
+	return n(a) == n(b)
 }

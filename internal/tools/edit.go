@@ -86,7 +86,8 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 		return nil, FileEditOut{}, err
 	}
 	p := personalPath(spaces, strings.TrimSpace(in.Path))
-	if sp := spaceOf(spaces, p); sp == nil {
+	sp := spaceOf(spaces, p)
+	if sp == nil {
 		return nil, FileEditOut{}, fmt.Errorf("path %q not recognised: use a path from file_search or folder_list", oneLine(p, 200))
 	} else if sp.Type != "personal" {
 		return nil, FileEditOut{}, fmt.Errorf("only files in your personal space can be changed here; files in a project space can't be edited through the assistant yet")
@@ -114,23 +115,22 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 		return nil, FileEditOut{}, fmt.Errorf("the result would be over 2 MB")
 	}
 
-	// The question: the essentials on the first line.
+	// The question: the file and the (first) change on the first line, as
+	// clients fold the rest.
 	me, _ := auth.Person(ctx)
+	shown := shownPath(sp, p)
+	first := fmt.Sprintf("Change your file %q: %s", shown, describe(in.Edits[0], 60))
+	if n := len(in.Edits); n > 1 {
+		first += fmt.Sprintf(", and %d more change(s)", n-1)
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Change your FILE %q (personal space): %d change(s), %s → %s?\n\n", oneLine(name, 80), len(in.Edits), size(len(data)), size(len(text)))
+	fmt.Fprintf(&b, "%s?\n\nFile: %s (personal space), %s → %s\n", first, shown, size(len(data)), size(len(text)))
 	for i, e := range in.Edits {
-		if i == 5 {
-			fmt.Fprintf(&b, "… and %d more change(s)\n", len(in.Edits)-5)
+		if i == 10 {
+			fmt.Fprintf(&b, "… and %d more change(s)\n", len(in.Edits)-10)
 			break
 		}
-		switch {
-		case e.OldText == "":
-			fmt.Fprintf(&b, "Append: %s\n", quoteSnip(e.NewText))
-		case e.NewText == "":
-			fmt.Fprintf(&b, "Remove: %s\n", quoteSnip(e.OldText))
-		default:
-			fmt.Fprintf(&b, "Replace: %s\n   with: %s\n", quoteSnip(e.OldText), quoteSnip(e.NewText))
-		}
+		fmt.Fprintf(&b, "%d. %s\n", i+1, describe(e, 300))
 	}
 	if t.outside.recent(me.Username) {
 		b.WriteString("\nWARNING: your assistant read email from outside the company in the last 30 minutes; make sure this is what you asked for.\n")
@@ -153,11 +153,28 @@ func (t *Tools) fileEdit(ctx context.Context, req *mcp.CallToolRequest, in FileE
 	return nil, FileEditOut{p, len(text), "The file was changed, with the person's confirmation."}, nil
 }
 
-func quoteSnip(s string) string {
+// describe: one change in a line: what is replaced, removed or appended,
+// with the size of long text so a large insertion is never confirmed blind.
+func describe(e FileEditChange, max int) string {
+	switch {
+	case e.OldText == "":
+		return "append " + snip(e.NewText, max)
+	case e.NewText == "":
+		return "remove " + snip(e.OldText, max)
+	default:
+		return "replace " + snip(e.OldText, max) + " with " + snip(e.NewText, max)
+	}
+}
+
+func snip(s string, max int) string {
 	if strings.TrimSpace(s) == "" {
 		return "(only spaces or line breaks)"
 	}
-	return "«" + oneLine(s, 160) + "»"
+	out := "«" + oneLine(s, max) + "»"
+	if lines := strings.Count(strings.TrimRight(s, "\n"), "\n") + 1; lines > 1 || len([]rune(s)) > max {
+		out += fmt.Sprintf(" (%d lines, %s)", lines, size(len(s)))
+	}
+	return out
 }
 
 func size(n int) string {

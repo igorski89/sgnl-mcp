@@ -132,9 +132,10 @@ only on loopback.
   needs the person's confirmation. `file_edit` changes a text file in the
   personal space after the person confirms the changes shown; the gateway
   applies exact replacements to the whole file as it is on the server
-  (larger than 2 MB is refused, never cut), and writes only with If-Match
-  on the version shown (`Overwrite` is the client's only way to replace a
-  file). No deleting, renaming or moving. Sharing: one colleague at a time, from the personal space,
+  (larger than 2 MB is refused, never cut), and writes only if the file is
+  still the version shown: checked just before, and sent as If-Match
+  (`Overwrite` is the client's only way to replace a file). No deleting,
+  renaming or moving. Sharing: one colleague at a time, from the personal space,
   view or edit, after the person confirms; the client's only POST is that
   invite (no public links, no unsharing).
 - Confirmations are asked of the person through MCP elicitation and bound

@@ -111,7 +111,7 @@ func TestOnlyOverwriteReplaces(t *testing.T) {
 			t.Errorf("PUT with %v was allowed", h)
 		}
 	}
-	for _, bad := range []string{"/elsewhere/notes.md", davPrefix + "s/../t/notes.md", davPrefix + "s/dir/"} {
+	for _, bad := range []string{"/elsewhere/notes.md", davPrefix + "s/../t/notes.md", davPrefix + "s/dir/", davPrefix + "s/run.sh?x.md", davPrefix + "s/run.sh#x.md"} {
 		if _, err := c.Overwrite(context.Background(), "tok", bad, `"v0"`, "text/plain", []byte("x")); err == nil {
 			t.Errorf("overwrite of %s allowed", bad)
 		}

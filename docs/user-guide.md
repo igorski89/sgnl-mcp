@@ -44,7 +44,7 @@ If Claude Code later says the connection needs a login, repeat step 2.
 4. Click **Add**, then **Connect**, and log in on your company's login page.
 5. In a new chat, turn the connector on (the tools menu) and try *"What's on my plate today?"*
 
-Sending email and saving into shared spaces may not work on claude.ai yet: it depends on whether the site shows SGNL's confirmation dialog. If it can't, the assistant tells you it can't send; your draft is waiting in Drafts, so send it from your mail app.
+Anything that needs your confirmation (sending email, invitations, sharing, changing a file, saving into shared spaces) may not work on claude.ai yet: it depends on whether the site shows SGNL's confirmation dialog. If it can't, the assistant tells you it can't send; your draft is waiting in Drafts, so send it from your mail app.
 
 ## What you can ask
 
@@ -177,9 +177,9 @@ Incoming mail and shared files are written by other people, and some of them may
 
 ## Which apps work?
 
-Sending and saving to shared spaces need an app that can show confirmations.
+Everything that asks you first (sending, invitations, sharing, changing files, saving to shared spaces) needs an app that can show confirmations.
 
-| App | Reading and drafts | Sending and shared spaces |
+| App | Reading and drafts | Anything you confirm |
 |---|---|---|
 | Claude Code | ✅ | ✅ (tested) |
 | claude.ai (website) | ✅ | not yet known |
@@ -203,6 +203,6 @@ In an app that can't show confirmations, the assistant tells you it can't send. 
 
 **Is a draft sent automatically?** No. A draft is sent only when you ask, see the confirmation and press Accept, or when you send it yourself from your mail app.
 
-**Can it delete things by mistake?** No. Deleting isn't possible through SGNL at all.
+**Can it delete things by mistake?** No. Deleting mail, events or files isn't possible through SGNL at all. When it changes a text file it can remove text from it, but only the changes you saw and accepted.
 
 **Where can I see what it did?** Drafts are in your Drafts folder, sent mail is in Sent, files are in your spaces, and calendar entries are in your calendar. Everything is visible in your usual apps.

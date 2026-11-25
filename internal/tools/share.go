@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -115,7 +115,7 @@ func (t *Tools) fileShare(ctx context.Context, req *mcp.CallToolRequest, in File
 	if it.Folder {
 		kind = "FOLDER (and everything in it)"
 	}
-	name := oneLine(path.Base(strings.TrimSuffix(in.Path, "/")), 80)
+	name := shownPath(spaceOf(spaces, in.Path), in.Path)
 	who := oneLine(to.Name, 60) + " <" + oneLine(to.Mail, 80) + ">"
 	verb := map[string]string{"view": "VIEW", "edit": "VIEW AND CHANGE"}[access]
 	var b strings.Builder
@@ -147,8 +147,24 @@ func personalPath(spaces []opencloud.Space, p string) string {
 	}
 	for _, sp := range spaces {
 		if sp.Type == "personal" {
-			return sp.Path + strings.TrimPrefix(p, "/")
+			// A short path is as the person writes it: escape each part the
+			// way the file server's own paths are.
+			parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
+			for i, x := range parts {
+				parts[i] = url.PathEscape(x)
+			}
+			return sp.Path + strings.Join(parts, "/")
 		}
 	}
 	return p
+}
+
+// shownPath: a path as the person knows it (unescaped, from the space's
+// top), for confirmations.
+func shownPath(sp *opencloud.Space, p string) string {
+	rel := strings.Trim(strings.TrimPrefix(p, sp.Path), "/")
+	if u, err := url.PathUnescape(rel); err == nil {
+		rel = u
+	}
+	return oneLine(rel, 120)
 }

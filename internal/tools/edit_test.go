@@ -111,13 +111,13 @@ func TestEditOnlyWithThePersonsYes(t *testing.T) {
 		t.Fatalf("declined, yet %q, %d puts", resultText(r), f.puts)
 	}
 	first, rest, _ := strings.Cut(asked, "\n")
-	for _, want := range []string{`FILE "notes.md"`, "personal space", "1 change(s)"} {
+	for _, want := range []string{`file "notes.md"`, "replace «Monday» with «Tuesday»"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("first line lacks %q: %q", want, first)
 		}
 	}
-	if !strings.Contains(rest, "«Monday»") || !strings.Contains(rest, "«Tuesday»") {
-		t.Errorf("change not shown: %q", rest)
+	if !strings.Contains(rest, "personal space") || !strings.Contains(rest, "1. replace «Monday»") {
+		t.Errorf("details not shown: %q", rest)
 	}
 
 	f = newDrive()
@@ -151,6 +151,7 @@ func TestEditRefusals(t *testing.T) {
 		"no edits":      {notes, nil},
 		"unknown":       {"/remote.php/dav/spaces/zz/x.md", [][2]string{{"a", "b"}}},
 		"traversal":     {"../t/plan.md", [][2]string{{"team", "x"}}},
+		"query":         {"/remote.php/dav/spaces/p/notes.md?x.md", [][2]string{{"Monday", "x"}}},
 	} {
 		if r := edit(t, cs, c.p, c.e...); !r.IsError {
 			t.Errorf("%s: not refused (%q)", name, resultText(r))
@@ -158,6 +159,27 @@ func TestEditRefusals(t *testing.T) {
 	}
 	if f.puts != 0 {
 		t.Fatalf("%d files written", f.puts)
+	}
+}
+
+// Names as the person knows them: a short path with a space and an
+// umlaut reaches the escaped file, and the dialog shows it unescaped.
+func TestEditShowsReadableNames(t *testing.T) {
+	f := newDrive()
+	f.set("/remote.php/dav/spaces/p/Q4/Müller notes.md", "draft\n") // the server sees the unescaped path
+	var asked string
+	cs := editSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = r.Params.Message
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	})
+	long := strings.Repeat("line\n", 50)
+	r := edit(t, cs, "Q4/Müller notes.md", [2]string{"", long}, [2]string{"draft", "final"})
+	if r.IsError {
+		t.Fatal(resultText(r))
+	}
+	first, _, _ := strings.Cut(asked, "\n")
+	if !strings.Contains(first, `"Q4/Müller notes.md"`) || !strings.Contains(first, "(50 lines") || !strings.Contains(first, "and 1 more") {
+		t.Errorf("first line: %q", first)
 	}
 }
 
