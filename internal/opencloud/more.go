@@ -109,10 +109,14 @@ func (c *Client) Versions(ctx context.Context, token, p string) ([]Version, erro
 	}
 	out := []Version{}
 	for _, r := range rs {
-		u, _ := url.PathUnescape(r.Href)
-		id := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSuffix(u, "/"), metaPrefix+it.ID+"/v"), "/")
-		if id == "" {
+		u, _ := url.PathUnescape(strings.TrimSuffix(r.Href, "/"))
+		i := strings.LastIndex(u, "/v/")
+		if i < 0 {
 			continue // the collection itself
+		}
+		id := u[i+3:]
+		if id == "" || strings.Contains(id, "/") {
+			continue
 		}
 		v := Version{ID: id}
 		for _, ps := range r.Propstat {

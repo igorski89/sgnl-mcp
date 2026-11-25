@@ -118,7 +118,7 @@ func (t *Tools) folderList(ctx context.Context, _ *mcp.CallToolRequest, in Folde
 // ---- file_save: a NEW text file (never overwrites)
 
 type FileSaveIn struct {
-	Folder  string `json:"folder" jsonschema:"folder path from folder_list (a space's path for its top level)"`
+	Folder  string `json:"folder,omitempty" jsonschema:"folder path from folder_list (a space's path for its top level); default /: the top of your personal space"`
 	Name    string `json:"name" jsonschema:"file name with extension: .md, .txt, .csv, .json, .yaml"`
 	Content string `json:"content" jsonschema:"the file's text"`
 }
@@ -162,9 +162,14 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 	if err != nil {
 		return nil, FileSaveOut{}, err
 	}
+	in.Folder = strings.TrimSpace(in.Folder)
+	if in.Folder == "" {
+		in.Folder = "/"
+	}
+	in.Folder = personalPath(spaces, in.Folder)
 	sp := spaceOf(spaces, in.Folder)
 	if sp == nil {
-		return nil, FileSaveOut{}, fmt.Errorf("folder must come from folder_list")
+		return nil, FileSaveOut{}, fmt.Errorf("folder %q not recognised: use a path from folder_list, or / for the top of your personal space", oneLine(in.Folder, 200))
 	}
 	seen, err := t.othersSee(ctx, tok, sp, in.Folder)
 	if err != nil {

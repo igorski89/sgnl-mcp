@@ -116,7 +116,12 @@ func (t *Tools) fileShare(ctx context.Context, req *mcp.CallToolRequest, in File
 		kind = "FOLDER (and everything in it)"
 	}
 	name := shownPath(spaceOf(spaces, in.Path), in.Path)
-	who := oneLine(to.Name, 60) + " <" + oneLine(to.Mail, 80) + ">"
+	who := oneLine(to.Name, 60)
+	if to.Mail != "" {
+		who += " <" + oneLine(to.Mail, 80) + ">"
+	} else if to.Username != "" {
+		who += " (" + oneLine(to.Username, 60) + ")"
+	}
 	verb := map[string]string{"view": "VIEW", "edit": "VIEW AND CHANGE"}[access]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Share the %s %q with %s, who can %s it?\n\n", kind, name, who, verb)
