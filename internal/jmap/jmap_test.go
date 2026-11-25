@@ -79,7 +79,7 @@ func TestSendOnlyAsMailSend(t *testing.T) {
 // Events with participants (which send invitations) only as event_invite.
 func TestInviteOnlyAsEventInvite(t *testing.T) {
 	att := func(mod func(p map[string]any)) map[string]any {
-		p := map[string]any{"@type": "Participant", "email": "h@co.example", "sendTo": map[string]string{"imip": "mailto:h@co.example"},
+		p := map[string]any{"@type": "Participant", "email": "h@co.example", "calendarAddress": "mailto:h@co.example",
 			"roles": map[string]bool{"attendee": true}, "participationStatus": "needs-action", "expectReply": true}
 		if mod != nil {
 			mod(p)
@@ -99,8 +99,10 @@ func TestInviteOnlyAsEventInvite(t *testing.T) {
 	}
 	for name, mod := range map[string]func(p map[string]any){
 		"organizer role": func(p map[string]any) { p["roles"] = map[string]bool{"owner": true} },
-		"other inbox":    func(p map[string]any) { p["sendTo"] = map[string]string{"imip": "mailto:evil@x.example"} },
-		"other method":   func(p map[string]any) { p["sendTo"] = map[string]string{"web": "https://x"} },
+		"other inbox":    func(p map[string]any) { p["calendarAddress"] = "mailto:evil@x.example" },
+		"other method":   func(p map[string]any) { p["calendarAddress"] = "https://x" },
+		"no address":     func(p map[string]any) { delete(p, "calendarAddress") },
+		"sendTo":         func(p map[string]any) { p["sendTo"] = map[string]string{"imip": "mailto:h@co.example"} },
 		"unknown field":  func(p map[string]any) { p["delegatedTo"] = map[string]bool{"x": true} },
 	} {
 		if check(Call{Method: "CalendarEvent/set", Invite: true, Args: att(mod)}) == nil {

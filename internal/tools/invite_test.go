@@ -14,8 +14,9 @@ import (
 )
 
 type fakeCal struct {
-	mu   sync.Mutex
-	sets []map[string]any
+	mu          sync.Mutex
+	sets        []map[string]any
+	unscheduled bool // the mail server made no one organizer (no invitations)
 }
 
 func (f *fakeCal) serve(t *testing.T) *httptest.Server {
@@ -42,7 +43,11 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 				res = map[string]any{"list": []map[string]any{{"id": "c1", "isDefault": true}}}
 			case "CalendarEvent/set":
 				f.sets = append(f.sets, args)
-				res = map[string]any{"created": map[string]any{"e": map[string]string{"id": "ev1"}}}
+				e := map[string]any{"id": "ev1"}
+				if !f.unscheduled {
+					e["participants"] = map[string]any{"o": map[string]any{"roles": map[string]bool{"owner": true}}}
+				}
+				res = map[string]any{"created": map[string]any{"e": e}}
 			}
 			out = append(out, []any{name, res, id})
 		}
@@ -110,8 +115,23 @@ func TestInviteOnlyWithThePersonsYes(t *testing.T) {
 	}
 	ev := a["create"].(map[string]any)["e"].(map[string]any)
 	ps := ev["participants"].(map[string]any)
-	if len(ps) != 1 || ps["a0"].(map[string]any)["email"] != "hugo@co.example" || ev["calendarIds"] == nil {
+	if p := ps["a0"].(map[string]any); len(ps) != 1 || p["email"] != "hugo@co.example" ||
+		p["calendarAddress"] != "mailto:hugo@co.example" || ev["calendarIds"] == nil {
 		t.Errorf("event: %v", ev)
+	}
+}
+
+// Live test 2026-11-25: Stalwart created the event but scheduled nothing,
+// and the tool said "handed to the mail server". Now no organizer in the
+// answer means a failure the person hears about.
+func TestInviteNotScheduledIsAnError(t *testing.T) {
+	f := &fakeCal{unscheduled: true}
+	cs := inviteSession(t, f, func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		return &mcp.ElicitResult{Action: "accept"}, nil
+	})
+	r := invite(t, cs, "hugo@co.example")
+	if !r.IsError || !strings.Contains(resultText(r), "did not schedule") {
+		t.Fatalf("unscheduled invite reported as: %q", resultText(r))
 	}
 }
 

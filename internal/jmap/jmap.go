@@ -150,7 +150,7 @@ type Call struct {
 	Send bool
 	// Invite: the only CalendarEvent/set with participants, for
 	// event_invite after the person confirmed: exactly one create, the
-	// attendees each only by email (imip), and sendSchedulingMessages, so
+	// attendees each only at their own email (calendarAddress mailto:), and sendSchedulingMessages, so
 	// the mail server adds the person as organizer and sends the invitations.
 	Invite bool
 }
@@ -220,6 +220,9 @@ func checkInvite(call Call) error {
 		}
 		for _, pv := range ps {
 			p, _ := pv.(map[string]any)
+			if _, ok := p["calendarAddress"]; !ok {
+				return fmt.Errorf("jmap: invite: an attendee without calendarAddress gets no invitation")
+			}
 			for k, v := range p {
 				switch k {
 				case "@type", "email", "name", "participationStatus", "expectReply":
@@ -227,9 +230,10 @@ func checkInvite(call Call) error {
 					if r, _ := v.(map[string]bool); len(r) != 1 || !r["attendee"] {
 						return fmt.Errorf("jmap: invite: participants may only be attendees")
 					}
-				case "sendTo":
-					st, _ := v.(map[string]string)
-					if len(st) != 1 || !strings.HasPrefix(st["imip"], "mailto:") || st["imip"] != "mailto:"+fmt.Sprint(p["email"]) {
+				case "calendarAddress":
+					// JSCalendar-bis: the address the mail server schedules with
+					// (it becomes the iCalendar ATTENDEE; sendTo is ignored).
+					if a, _ := v.(string); a != "mailto:"+fmt.Sprint(p["email"]) {
 						return fmt.Errorf("jmap: invite: an attendee is reached only at their own email")
 					}
 				default:

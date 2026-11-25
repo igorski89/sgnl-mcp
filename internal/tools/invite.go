@@ -58,7 +58,7 @@ func (t *Tools) eventInvite(ctx context.Context, req *mcp.CallToolRequest, in Ev
 	ps := map[string]any{}
 	for i, a := range who {
 		ps[fmt.Sprintf("a%d", i)] = map[string]any{"@type": "Participant", "email": a,
-			"sendTo": map[string]string{"imip": "mailto:" + a}, "roles": map[string]bool{"attendee": true},
+			"calendarAddress": "mailto:" + a, "roles": map[string]bool{"attendee": true},
 			"participationStatus": "needs-action", "expectReply": true}
 	}
 	e["participants"] = ps
@@ -138,12 +138,22 @@ func (t *Tools) eventInvite(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		return nil, EventInviteOut{}, err
 	}
 	var got struct {
-		Created map[string]struct{ ID string } `json:"created"`
+		Created map[string]struct {
+			ID           string         `json:"id"`
+			Participants map[string]any `json:"participants"`
+		} `json:"created"`
 	}
 	_ = json.Unmarshal(r[0], &got)
 	id := got.Created["e"].ID
 	if id == "" {
 		return nil, EventInviteOut{}, fmt.Errorf("the calendar didn't create the event")
+	}
+	// The mail server schedules only once it has made the person the
+	// organizer, and then it returns the participants it changed. Without
+	// them no invitation went out: say so rather than claim success.
+	if len(got.Created["e"].Participants) == 0 {
+		slog.Warn("invitations not scheduled", "user", me.Username, "event", id)
+		return nil, EventInviteOut{}, fmt.Errorf("the event %s is in the calendar, but the mail server did not schedule the invitations: no one was invited. Tell the person, and don't retry", id)
 	}
 	l := len(who)
 	slogInvite(me.Username, l, outside)
