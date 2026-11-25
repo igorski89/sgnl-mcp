@@ -36,6 +36,7 @@ needs your click, staying safe).
 | `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
 | `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx) |
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
+| `file_share` | files (OpenCloud) | share a file or folder in the personal space with one colleague (view/edit), **only after the person confirms**; no links |
 | `file_save` | files (OpenCloud) | a new text file, never overwriting; **shared spaces need a confirmation** |
 
 ## Admin endpoint
@@ -127,7 +128,9 @@ only on loopback.
   `event_invite`, after the person confirms; the mail server makes the
   person the organizer, the gateway can't set organizer or reply address.
 - Files: only new files; saving into a shared space needs the person's
-  confirmation.
+  confirmation. Sharing: one colleague at a time, from the personal space,
+  view or edit, after the person confirms; the client's only POST is that
+  invite (no public links, no unsharing).
 - Confirmations are asked of the person through MCP elicitation and bound
   to the exact request; the model only sees the outcome. Clients without
   elicitation can't do confirmed actions.

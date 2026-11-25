@@ -14,6 +14,7 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | **Invite people to a meeting** | **Yes**: you see a confirmation and press Accept |
 | Save new files in your personal space | No |
 | **Send an email** | **Yes**: you see a confirmation and press Accept |
+| **Share a file or folder with a colleague** | **Yes**: you see a confirmation and press Accept |
 | **Save a file into a shared space** | **Yes**: you see a confirmation and press Accept |
 | Delete anything, create public links, set up forwarding | **Never**: it can't do these at all |
 
@@ -144,6 +145,10 @@ The assistant searches your address book and the company directory.
 > "Write meeting notes from this thread and save them as notes.md in my personal space."
 >
 > "Save that summary into the Marketing space."
+>
+> "Share my Q4 folder with Hugo, read-only."
+
+Sharing works for files and folders in your personal space, with one colleague at a time, for viewing (the default) or editing. The confirmation's first line says what (FILE or FOLDER), with whom, and whether they can change it. Public links ("anyone with the link") can't be made through the assistant. To stop sharing, use your file app.
 
 The assistant creates **new** text files only: it never overwrites or deletes an existing file. Saving into a **shared** space shows a confirmation first, the same way sending does, because your colleagues will see the file.
 

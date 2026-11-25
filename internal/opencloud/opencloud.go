@@ -5,6 +5,7 @@
 package opencloud
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -32,6 +33,14 @@ func New(base string) *Client {
 // davPrefix: the only paths file_read accepts (what search returns).
 const davPrefix = "/remote.php/dav/spaces/"
 
+// post: the share invite, the only POST (see share.go).
+func (c *Client) post(ctx context.Context, token, path string, body []byte) (*http.Response, error) {
+	if !invitePath.MatchString(path) {
+		return nil, fmt.Errorf("opencloud: POST %s is not allowed", path)
+	}
+	return c.send(ctx, token, "POST", path, bytes.NewReader(body), map[string]string{"Content-Type": "application/json"})
+}
+
 func (c *Client) do(ctx context.Context, token, method, path string, body io.Reader, hdr map[string]string) (*http.Response, error) {
 	if !slices.Contains(allowedMethods, method) {
 		return nil, fmt.Errorf("opencloud: %s is not allowed (read-only)", method)
@@ -39,6 +48,10 @@ func (c *Client) do(ctx context.Context, token, method, path string, body io.Rea
 	if method == "PUT" && hdr["If-None-Match"] != "*" {
 		return nil, fmt.Errorf("opencloud: PUT only for new files (never overwrite)")
 	}
+	return c.send(ctx, token, method, path, body, hdr)
+}
+
+func (c *Client) send(ctx context.Context, token, method, path string, body io.Reader, hdr map[string]string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.Base+path, body)
 	if err != nil {
 		return nil, err
