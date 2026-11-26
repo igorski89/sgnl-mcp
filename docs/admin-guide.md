@@ -24,6 +24,7 @@ Keep it separate from your everyday connection, and connect it only when you nee
 |---|---|
 | List people, groups, recent logins and recent account changes | No |
 | See firing alerts, the server's disk/memory/CPU, the apps, backups, certificates | No |
+| See the mailboxes: shared ones and their members, people's addresses and aliases, space used; the outgoing mail queue | No (never any mail content) |
 | **Invite a new person** | **Yes**: you see the name, their future address and where the set-up link goes |
 | **Finish an invitation** | **Yes**: you see the address and the groups, with what each opens |
 | **Add someone to groups / remove them** | **Yes**: you see what each group opens or what they lose |
@@ -96,6 +97,20 @@ You can't log out or disable yourself here.
 - **Backups:**
   - A job whose last run started after its last success either failed or is still running.
   - "Never recorded" or "unknown" means *not OK until shown otherwise*.
+
+## Mailboxes and mail delivery
+
+> "Who's in the contact@ mailbox?"
+>
+> "Which addresses does Hugo have? How much space does his mailbox use?"
+>
+> "Did my mail to bob@example.com go out?"
+>
+> "Is anything stuck in the outgoing mail queue?"
+
+- **Read-only, and never mail content:** the assistant sees mailboxes, members, addresses, aliases, space used and the outgoing queue (sender, recipients, status, the receiving server's reply). It never sees what a mail says.
+- **"Was it delivered?":** only mail still waiting in the queue shows up, e.g. a server that keeps refusing it and the reason. An empty answer means it was handed on: there's no delivery history. Outgoing mail goes through a relay service, so a bounce comes back later as a mail to the sender.
+- **Changing members, aliases or quotas** isn't possible through the assistant yet: ask whoever runs the instance.
 
 ## If something goes wrong
 
