@@ -19,7 +19,7 @@ groups, the server's health).
 | tool | app | does |
 |---|---|---|
 | `my_sessions` | login server (admin API, own account only) | open session count and recent logins (when, IP) of the caller; `SGNL_MCP_SELF_ACCOUNT` |
-| `logout_everywhere` | login server (admin API, own account only) | end every session and token of the caller, **after they confirm**; the username is never an input |
+| `logout_everywhere` | login server (admin API, own account only) | end every login-server session and token of the caller, **after they confirm** (mail app passwords, Forgejo and file-app tokens stay); the username is never an input; only with the admin write client |
 | `whoami` | login server | username, name, email, groups |
 | `day_overview` | all | today's events, unread mail, files changed today |
 | `mail_search` | mail (JMAP) | messages by words / sender / date / folder / unread: id, folder, sender, subject, date, preview |

@@ -17,10 +17,16 @@ import (
 type Self struct {
 	Read  *Client // authelia.admin.read
 	Write *Client // authelia.admin.write (nil: no logout)
+	// current: who the caller is (tests); nil: auth.Current.
+	current func(context.Context) (auth.Claims, bool)
 }
 
 func (s *Self) me(ctx context.Context) (string, error) {
-	c, ok := auth.Current(ctx)
+	cur := s.current
+	if cur == nil {
+		cur = auth.Current
+	}
+	c, ok := cur(ctx)
 	if !ok || c.Username == "" {
 		return "", fmt.Errorf("couldn't check with the login server who you are: try again in a moment")
 	}
@@ -105,3 +111,9 @@ func (s *Self) LogoutEverywhere(ctx context.Context) error {
 
 // Username: who the login server says the caller is now (for questions).
 func (s *Self) Username(ctx context.Context) (string, error) { return s.me(ctx) }
+
+// SelfForTest: a Self that takes the caller from who (for other
+// packages' tests).
+func SelfForTest(read, write *Client, who func(context.Context) (auth.Claims, bool)) *Self {
+	return &Self{Read: read, Write: write, current: who}
+}

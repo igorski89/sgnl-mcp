@@ -381,6 +381,9 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		// no question, in a shared one always.
 		if owner != "" {
 			q := fmt.Sprintf("Change %q in %s: %s? %s", oneLine(cur.Title, 60), where(owner, calName), strings.Join(changes, "; "), seenByAll)
+			if series && occ == "" {
+				q = fmt.Sprintf("Change ALL meetings of %q (%s) in %s: %s? %s", oneLine(e.Title, 60), ruleText(e), where(owner, calName), strings.Join(changes, "; "), seenByAll)
+			}
 			if occ != "" {
 				q = fmt.Sprintf("Change only the meeting %q on %s in %s: %s? %s", oneLine(cur.Title, 60), whenText(oldStart, cur.ShowWithoutTime), where(owner, calName),
 					strings.Join(changes, "; "), seenByAll)
@@ -462,6 +465,10 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 }
 
 // sharedCal: for an event in a calendar someone shared with the person,
+// (Stalwart builds scheduling messages from the addresses of the
+// calendar's account, jmap/src/calendar_event/set.rs itip_update with
+// account_info of the request's account: updates to a meeting there go
+// out as its owner, the organizer.)
 // whose calendar it is and its name; the change is refused unless the
 // share lets the person change any event there (mayWriteAll). "" owner:
 // the person's own calendar.

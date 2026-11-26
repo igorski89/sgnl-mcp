@@ -68,8 +68,10 @@ func (t *Tools) Register(s *mcp.Server) {
 	if t.Self != nil {
 		add(t, s, &mcp.Tool{Name: "my_sessions", Annotations: ro,
 			Description: "Where you're logged in with SGNL: how many login sessions are open now, and your recent successful logins (when, from which IP), plus failed attempts. For your own account only."}, t.mySessions)
+	}
+	if t.Self != nil && t.Self.Write != nil {
 		add(t, s, &mcp.Tool{Name: "logout_everywhere", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)},
-			Description: "Log yourself out everywhere: every SGNL login session and app token of yours ends now, this AI app's too (you log in again). App passwords of mail apps keep working. The person is asked first."}, t.logoutEverywhere)
+			Description: "Log yourself out everywhere: every SGNL login session and token of yours ends now, this AI app's too (you log in again). Mail app passwords, Forgejo git tokens and the file app's app tokens keep working. The person is asked first."}, t.logoutEverywhere)
 	}
 	add(t, s, &mcp.Tool{Name: "whoami", Annotations: ro,
 		Description: "Who you are logged in as on this SGNL instance: username, name, email, groups."}, whoami)

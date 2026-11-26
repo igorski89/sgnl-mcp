@@ -74,10 +74,11 @@ var (
 	reBullet  = regexp.MustCompile(`^\s*[-*+]\s+(.*)$`)
 	reNumber  = regexp.MustCompile(`^\s*\d{1,4}[.)]\s+(.*)$`)
 	reTableSp = regexp.MustCompile(`^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$`)
-	reInline  = regexp.MustCompile(`\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_(.+?)_`)
 )
 
-// runs: a line's text as Word runs, **bold** and *italic* marked.
+// runs: a line's text as Word runs, **bold** and *italic* marked. Marks
+// count only at word edges (so file_names, a*b and 2 * 3 stay as written);
+// underscores never mark anything.
 func runs(s string) string {
 	var b strings.Builder
 	run := func(t string, bold, italic bool) {
@@ -97,22 +98,41 @@ func runs(s string) string {
 		}
 		b.WriteString(`<w:t xml:space="preserve">` + esc(t) + "</w:t></w:r>")
 	}
-	last := 0
-	for _, m := range reInline.FindAllStringSubmatchIndex(s, -1) {
-		run(s[last:m[0]], false, false)
-		switch {
-		case m[2] >= 0:
-			run(s[m[2]:m[3]], true, false)
-		case m[4] >= 0:
-			run(s[m[4]:m[5]], false, true)
-		case m[6] >= 0:
-			run(s[m[6]:m[7]], true, false)
-		case m[8] >= 0:
-			run(s[m[8]:m[9]], false, true)
-		}
-		last = m[1]
+	word := func(r byte) bool {
+		return r == '_' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= 0x80
 	}
-	run(s[last:], false, false)
+	space := func(r byte) bool { return r == ' ' || r == '\t' }
+	var plain strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] == '*' && (i == 0 || (!word(s[i-1]) && s[i-1] != '*')) {
+			mark := "*"
+			if strings.HasPrefix(s[i:], "**") {
+				mark = "**"
+			}
+			open := i + len(mark)
+			if open < len(s) && !space(s[open]) && s[open] != '*' {
+				// The closing mark: not after a space, not before a word.
+				for j := open + 1; j <= len(s)-len(mark); j++ {
+					if s[j:j+len(mark)] != mark || space(s[j-1]) || s[j-1] == '*' {
+						continue
+					}
+					end := j + len(mark)
+					if end < len(s) && (word(s[end]) || s[end] == '*') {
+						continue
+					}
+					run(plain.String(), false, false)
+					plain.Reset()
+					run(s[open:j], mark == "**", mark == "*")
+					i = end
+					goto next
+				}
+			}
+		}
+		plain.WriteByte(s[i])
+		i++
+	next:
+	}
+	run(plain.String(), false, false)
 	return b.String()
 }
 
@@ -218,11 +238,12 @@ func Docx(md, title string) ([]byte, error) {
 				if reTableSp.MatchString(strings.TrimSpace(lines[i])) {
 					continue
 				}
-				if len(rows) < 1000 {
-					rows = append(rows, cells(lines[i]))
-				}
+				rows = append(rows, cells(lines[i]))
 			}
 			i--
+			if len(rows) > 1000 {
+				return nil, fmt.Errorf("a table has %d rows: at most 1000 (use an .xlsx for more)", len(rows))
+			}
 			if len(rows) > 0 {
 				body.WriteString(table(rows))
 			}

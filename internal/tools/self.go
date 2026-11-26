@@ -25,7 +25,7 @@ func (t *Tools) logoutEverywhere(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, LogoutOut{}, err
 	}
-	q := fmt.Sprintf("Log %s out EVERYWHERE now? Every SGNL login session and app token of yours ends: browsers, phone and desktop apps that log in with SGNL, and this AI app too (you'll log in again here).\n\nApp passwords of mail apps keep working. Do this after losing a device, or if you think someone else is logged in as you.", me)
+	q := fmt.Sprintf("Log %s out EVERYWHERE now? Every SGNL login session and token of yours ends: browsers, phone and desktop apps that log in with SGNL, and this AI app too (you'll log in again here).\n\nStill working afterwards: app passwords of mail apps, Forgejo git tokens and the file app's app tokens. Do this after losing a device, or if you think someone else is logged in as you.", me)
 	res, ok, err := t.confirm(ctx, req, q, me)
 	if err != nil || res != nil {
 		return res, LogoutOut{}, err
@@ -37,5 +37,5 @@ func (t *Tools) logoutEverywhere(ctx context.Context, req *mcp.CallToolRequest, 
 		return nil, LogoutOut{}, err
 	}
 	return nil, LogoutOut{Done: "logged out everywhere",
-		Note: "Every session and token ended, this connection's too: the next request here asks the person to log in again. If a device is lost, also ask whoever runs the instance to remove its mail app passwords."}, nil
+		Note: "Every SGNL login session and token ended, this connection's too: the next request here asks the person to log in again. Mail app passwords, Forgejo git tokens and the file app's app tokens still work: if a device with one is lost, ask whoever runs the instance to remove them."}, nil
 }

@@ -17,10 +17,13 @@ import (
 
 // fakeDrive: files by DAV path, each with a version.
 type fakeDrive struct {
-	mu    sync.Mutex
-	files map[string]string
-	ver   map[string]int
-	puts  int
+	mu     sync.Mutex
+	files  map[string]string
+	ver    map[string]int
+	puts   int
+	ctypes map[string]string // Content-Type of new files
+	copies []string          // COPY src → dst
+	shared map[string]bool   // folders shared with others
 }
 
 func (f *fakeDrive) set(p, s string) { f.mu.Lock(); f.files[p] = s; f.ver[p]++; f.mu.Unlock() }
@@ -37,6 +40,31 @@ func (f *fakeDrive) serve(t *testing.T) *httptest.Server {
 			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
 				{"id": "p", "name": "Personal", "driveType": "personal", "root": map[string]string{"webDavUrl": "http://x/remote.php/dav/spaces/p"}},
 				{"id": "t", "name": "Team", "driveType": "project", "root": map[string]string{"webDavUrl": "http://x/remote.php/dav/spaces/t"}}}})
+		case r.Method == "PUT" && r.Header.Get("If-None-Match") == "*" && !exists:
+			b, _ := io.ReadAll(r.Body)
+			f.files[p], f.puts = string(b), f.puts+1
+			if f.ctypes == nil {
+				f.ctypes = map[string]string{}
+			}
+			f.ctypes[p] = r.Header.Get("Content-Type")
+			w.WriteHeader(201)
+		case r.Method == "PROPFIND" && strings.HasSuffix(p, "/") || r.Method == "PROPFIND" && f.shared[p]:
+			// A folder: shared with others if listed.
+			w.WriteHeader(207)
+			st := ""
+			if f.shared[strings.TrimSuffix(p, "/")] {
+				st = `<oc:share-types><oc:share-type>0</oc:share-type></oc:share-types>`
+			}
+			fmt.Fprintf(w, `<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop>%s</d:prop></d:propstat></d:response></d:multistatus>`, st)
+		case r.Method == "COPY" && exists:
+			dst := strings.TrimPrefix(r.Header.Get("Destination"), "http://"+r.Host)
+			if _, taken := f.files[dst]; taken || r.Header.Get("Overwrite") != "F" {
+				w.WriteHeader(412)
+				return
+			}
+			f.files[dst] = f.files[p]
+			f.copies = append(f.copies, p+" → "+dst)
+			w.WriteHeader(201)
 		case !exists:
 			w.WriteHeader(404)
 		case r.Method == "GET":

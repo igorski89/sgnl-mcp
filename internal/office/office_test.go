@@ -117,3 +117,36 @@ func save(t *testing.T, name string, b []byte) {
 		_ = os.WriteFile(filepath.Join(d, name), b, 0o644)
 	}
 }
+
+func TestDocxEmphasisOnlyAtWordEdges(t *testing.T) {
+	for in, want := range map[string]string{
+		"see my_file_name.txt":           "see my_file_name.txt",
+		"mail first_last@co.example now": "mail first_last@co.example now",
+		"2 * 3 * 4 = 24":                 "2 * 3 * 4 = 24",
+		"a*b*c stays":                    "a*b*c stays",
+		"https://x.example/a_b_c/d":      "https://x.example/a_b_c/d",
+		"**bold** and *it* here":         "bold and it here",
+		"(**x**) and **y**.":             "(x) and y.",
+		"unclosed **bold stays":          "unclosed **bold stays",
+		"__not__ bold":                   "__not__ bold",
+	} {
+		b, err := Docx(in, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := textx.Extract("x.docx", "", b, false)
+		if got != want {
+			t.Errorf("%q → %q, want %q", in, got, want)
+		}
+	}
+	if !strings.Contains(runs("**x**"), "<w:b/>") || !strings.Contains(runs("*x*"), "<w:i/>") || strings.Contains(runs("a_b_c"), "<w:i/>") {
+		t.Error("marks")
+	}
+	var big strings.Builder
+	for range 1001 {
+		big.WriteString("| a | b |\n")
+	}
+	if _, err := Docx(big.String(), ""); err == nil {
+		t.Error("a table of 1001 rows allowed")
+	}
+}

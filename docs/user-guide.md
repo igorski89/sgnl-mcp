@@ -249,7 +249,7 @@ Searching by words inside files finds documents whose text contains them; the as
 >
 > "Log me out everywhere." *(after losing a phone or laptop)*
 
-The assistant shows how many SGNL login sessions you have open and your recent logins (when and from which internet address). Logging out everywhere asks you first and ends every session and app login of yours, the assistant's too, so you log in again. App passwords you made for a mail app keep working: if a device with one is lost, ask whoever runs SGNL to remove it.
+The assistant shows how many SGNL login sessions you have open and your recent logins (when and from which internet address). Logging out everywhere asks you first and ends every session and app login of yours, the assistant's too, so you log in again. App passwords you made for a mail app, git tokens in Forgejo and app tokens in the file app keep working: if a device with one is lost, ask whoever runs SGNL to remove them.
 
 ## Staying safe
 
