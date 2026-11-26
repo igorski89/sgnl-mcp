@@ -30,6 +30,7 @@ groups, the server's health).
 | `mail_draft_update` | mail (JMAP) | change a draft (replaced by a new draft) |
 | `mail_flag` | mail (JMAP) | read / unread, flagged |
 | `mail_move` | mail (JMAP) | move between folders; never to Trash, Junk, Sent or Drafts |
+| `mail_folder_create`, `mail_folder_rename` | mail (JMAP) | create a folder, rename one of the person's own (never a standard one); never delete. In a shared mailbox **only after the person confirms** |
 | `mail_trash` | mail (JMAP) | move mail to Trash (at most 25), **only after the person confirms**; restorable |
 | `out_of_office_get` | mail (JMAP) | the automatic reply: on/off, dates, text |
 | `out_of_office_set` | mail (JMAP) | switch it on (**only after the person confirms** dates and whole text; plain text) or off |
@@ -44,6 +45,8 @@ groups, the server's health).
 | `event_cancel` | calendar (JMAP) | cancel a meeting the person organizes (attendees get a cancellation) or delete a private event, **only after the person confirms** |
 | `availability_get` | calendar (JMAP) | colleagues' free/busy |
 | `contact_search` | contacts (JMAP) | address book and company directory |
+| `contact_create`, `contact_update` | contacts (JMAP) | add or change a card in the person's address book (name, emails, phones, company, title, note) |
+| `contact_delete` | contacts (JMAP) | delete one card, **only after the person confirms**, seeing it |
 | `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
 | `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx) |
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |

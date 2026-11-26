@@ -3,7 +3,9 @@
 //   - only the methods in allowed;
 //   - never EmailSubmission (no sending mail);
 //   - no destroy, except a draft being replaced (Call.DestroyDraft);
-//   - calendar events without participants (no invitations go out).
+//   - calendar events without participants (no invitations go out);
+//   - mail folders: create or rename one, never delete;
+//   - contact cards: create or update one; delete one only after a confirm.
 package jmap
 
 import (
@@ -37,6 +39,83 @@ var allowed = []string{
 	"AddressBook/get", "ContactCard/get", "ContactCard/query",
 	"Principal/get", "Principal/query", "Principal/getAvailability",
 	"VacationResponse/get", "VacationResponse/set", "CalendarEvent/parse",
+	"Mailbox/set", "ContactCard/set",
+}
+
+// cardFields: what a contact card may carry when created or changed here.
+var cardFields = []string{"name", "emails", "phones", "organizations", "titles", "notes"}
+
+// checkCard: ContactCard/set creates or updates one card (only cardFields;
+// a new card also its @type, version, kind, uid and address book), or,
+// with Call.DeleteContact, destroys exactly one card and nothing else.
+func checkCard(call Call) error {
+	n := 0
+	for k, v := range call.Args {
+		switch k {
+		case "accountId":
+		case "destroy":
+			ids, _ := v.([]string)
+			if !call.DeleteContact || len(ids) != 1 {
+				return fmt.Errorf("jmap: contact destroy is not allowed")
+			}
+			n++
+		case "create", "update":
+			if call.DeleteContact {
+				return fmt.Errorf("jmap: contact delete: only the destroy")
+			}
+			m, _ := v.(map[string]any)
+			for _, x := range m {
+				n++
+				f, _ := x.(map[string]any)
+				for fk := range f {
+					if slices.Contains(cardFields, fk) {
+						continue
+					}
+					if k == "create" && slices.Contains([]string{"@type", "version", "kind", "uid", "addressBookIds"}, fk) {
+						continue
+					}
+					return fmt.Errorf("jmap: contact: %s is not allowed", fk)
+				}
+			}
+		default:
+			return fmt.Errorf("jmap: contact: %s is not allowed", k)
+		}
+	}
+	if n != 1 {
+		return fmt.Errorf("jmap: contact: exactly one create, update or destroy")
+	}
+	return nil
+}
+
+// checkMailbox: Mailbox/set creates or renames one folder: only its name
+// and parent, never a role, rights or subscription, and never a destroy.
+func checkMailbox(call Call) error {
+	n := 0
+	for k, v := range call.Args {
+		switch k {
+		case "accountId":
+		case "create", "update":
+			m, _ := v.(map[string]any)
+			for _, x := range m {
+				n++
+				f, _ := x.(map[string]any)
+				if len(f) == 0 {
+					return fmt.Errorf("jmap: folder: nothing to set")
+				}
+				for k := range f {
+					if k != "name" && k != "parentId" {
+						return fmt.Errorf("jmap: folder: %s is not allowed", k)
+					}
+				}
+			}
+		default:
+			return fmt.Errorf("jmap: folder: %s is not allowed", k)
+		}
+	}
+	if n != 1 {
+		return fmt.Errorf("jmap: folder: exactly one create or update")
+	}
+	return nil
 }
 
 // vacationFields: what an out-of-office update may set (plain text only).
@@ -210,6 +289,9 @@ type Call struct {
 	// the organizer wrote it (participants and organizer included), and
 	// never sendSchedulingMessages: importing mails no one.
 	Import bool
+	// DeleteContact: the only destroy of a contact card, for contact_delete
+	// after the person confirmed: exactly one id, nothing else.
+	DeleteContact bool
 	// Vacation: the out-of-office reply, for out_of_office_set (switching it
 	// on only after the person confirmed the dates and text).
 	Vacation bool
@@ -351,6 +433,15 @@ func check(call Call) error {
 	}
 	if call.Reply || call.Reschedule || call.Cancel || call.Import {
 		return fmt.Errorf("jmap: calendar change flag on %s", call.Method)
+	}
+	if call.Method == "Mailbox/set" {
+		return checkMailbox(call)
+	}
+	if call.Method == "ContactCard/set" {
+		return checkCard(call)
+	}
+	if call.DeleteContact {
+		return fmt.Errorf("jmap: contact delete flag on %s", call.Method)
 	}
 	if d, ok := call.Args["destroy"]; ok && d != nil {
 		if call.Method != "Email/set" || !call.DestroyDraft {

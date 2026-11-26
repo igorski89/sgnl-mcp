@@ -77,6 +77,10 @@ func (t *Tools) Register(s *mcp.Server) {
 	}
 	add(t, s, &mcp.Tool{Name: "mailbox_list", Annotations: ro,
 		Description: "Your mail folders with unread and total counts."}, t.mailboxList)
+	add(t, s, &mcp.Tool{Name: "mail_folder_create", Annotations: wr,
+		Description: "Create a mail folder (optionally inside another). In a shared mailbox the person is asked first, since everyone in it sees it."}, t.mailFolderCreate)
+	add(t, s, &mcp.Tool{Name: "mail_folder_rename", Annotations: wr,
+		Description: "Rename one of your own mail folders (not Inbox, Sent, Drafts, Trash and the other standard ones). In a shared mailbox the person is asked first. Folders are never deleted here."}, t.mailFolderRename)
 	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
 		Description: "Send a draft (from Drafts) as it is. The person is asked in their app first, with every recipient shown; nothing is sent without their yes. To change the mail, update the draft first."}, t.mailSend)
 	add(t, s, &mcp.Tool{Name: "mail_draft_create", Annotations: wr,
@@ -116,6 +120,12 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "When colleagues are busy (free/busy only, never what their events are), e.g. to find a common free slot. Times in UTC."}, t.availabilityGet)
 
 	// Contacts
+	add(t, s, &mcp.Tool{Name: "contact_create", Annotations: wr,
+		Description: "Add a person to your address book: name, emails, phones, company, title, note."}, t.contactCreate)
+	add(t, s, &mcp.Tool{Name: "contact_update", Annotations: wr,
+		Description: "Change a contact in your address book (id from contact_search): the fields given replace the old ones; the others stay. Company directory entries can't be changed."}, t.contactUpdate)
+	add(t, s, &mcp.Tool{Name: "contact_delete", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)},
+		Description: "Delete a contact from your address book (id from contact_search). The person is asked first, seeing the contact; it can't be undone."}, t.contactDelete)
 	add(t, s, &mcp.Tool{Name: "contact_search", Annotations: ro,
 		Description: "Find people: your address book and the company directory (name, emails, phones, company)."}, t.contactSearch)
 

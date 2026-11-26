@@ -16,8 +16,8 @@ func refused(t *testing.T, call Call, want string) {
 }
 
 func TestNeverSends(t *testing.T) {
-	for _, m := range []string{"EmailSubmission/set", "EmailSubmission/get", "Mailbox/set", "Email/import", "VacationResponse/set",
-		"SieveScript/set", "Identity/set", "ContactCard/set", "AddressBook/set", "Calendar/set", "Principal/set"} {
+	for _, m := range []string{"EmailSubmission/set", "EmailSubmission/get", "Email/import", "VacationResponse/set",
+		"SieveScript/set", "Identity/set", "AddressBook/set", "Calendar/set", "Principal/set"} {
 		refused(t, Call{Method: m}, "not allowed")
 	}
 }
@@ -219,4 +219,44 @@ func TestImportNeverMails(t *testing.T) {
 			t.Errorf("%s: allowed", name)
 		}
 	}
+}
+
+// Folders: create or rename one, by name and parent only; never delete.
+func TestMailboxOnlyCreateOrRename(t *testing.T) {
+	for name, c := range map[string]struct {
+		args map[string]any
+		ok   bool
+	}{
+		"create":        {map[string]any{"accountId": "A", "create": map[string]any{"f": map[string]any{"name": "Clients", "parentId": "in"}}}, true},
+		"rename":        {map[string]any{"accountId": "A", "update": map[string]any{"te": map[string]any{"name": "Old"}}}, true},
+		"destroy":       {map[string]any{"accountId": "A", "destroy": []string{"te"}}, false},
+		"remove emails": {map[string]any{"accountId": "A", "onDestroyRemoveEmails": true, "update": map[string]any{"te": map[string]any{"name": "x"}}}, false},
+		"role":          {map[string]any{"accountId": "A", "update": map[string]any{"te": map[string]any{"role": "inbox"}}}, false},
+		"rights":        {map[string]any{"accountId": "A", "update": map[string]any{"te": map[string]any{"shareWith": map[string]any{}}}}, false},
+		"two":           {map[string]any{"accountId": "A", "create": map[string]any{"a": map[string]any{"name": "a"}, "b": map[string]any{"name": "b"}}}, false},
+		"empty":         {map[string]any{"accountId": "A", "update": map[string]any{"te": map[string]any{}}}, false},
+	} {
+		if err := check(Call{Method: "Mailbox/set", Args: c.args}); (err == nil) != c.ok {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestContactCardGuard(t *testing.T) {
+	ok := func(c Call) {
+		t.Helper()
+		if err := check(c); err != nil {
+			t.Errorf("%v: %v", c.Args, err)
+		}
+	}
+	ok(Call{Method: "ContactCard/set", Args: map[string]any{"accountId": "A", "create": map[string]any{"c": map[string]any{"@type": "Card", "uid": "u", "addressBookIds": map[string]bool{"a": true}, "name": map[string]any{}}}}})
+	ok(Call{Method: "ContactCard/set", Args: map[string]any{"accountId": "A", "update": map[string]any{"c1": map[string]any{"emails": map[string]any{}}}}})
+	ok(Call{Method: "ContactCard/set", DeleteContact: true, Args: map[string]any{"accountId": "A", "destroy": []string{"c1"}}})
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"destroy": []string{"c1"}}}, "destroy")
+	refused(t, Call{Method: "ContactCard/set", DeleteContact: true, Args: map[string]any{"destroy": []string{"c1", "c2"}}}, "destroy")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"c1": map[string]any{"addressBookIds": map[string]bool{}}}}}, "addressBookIds")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"c1": map[string]any{"media": map[string]any{}}}}}, "media")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"create": map[string]any{"a": map[string]any{"name": 1}, "b": map[string]any{"name": 2}}}}, "exactly one")
+	refused(t, Call{Method: "Email/set", DeleteContact: true, Args: map[string]any{"destroy": []string{"x"}}}, "contact delete")
+	refused(t, Call{Method: "AddressBook/set"}, "not allowed")
 }

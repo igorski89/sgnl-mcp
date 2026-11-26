@@ -9,7 +9,9 @@ The assistant acts **as you**. It sees only what you can see and nothing that be
 | The assistant can… | Does it ask you first? |
 |---|---|
 | Read mail, calendar, contacts and files | No |
-| Write drafts, flag and move mail | No: it's all private to you, and nothing leaves your mailbox |
+| Write drafts, flag and move mail, create and rename your mail folders | No: it's all private to you, and nothing leaves your mailbox |
+| Add and change contacts in your address book | No |
+| **Delete a contact** | **Yes**: you see who it is and press Accept |
 | Put private entries in your calendar | No |
 | **Invite people to a meeting** | **Yes**: you see a confirmation and press Accept |
 | Save new files in your personal space | No |
@@ -88,7 +90,7 @@ Drafts land in your **Drafts** folder. You can review them there, edit them in y
 >
 > "Star the mail from Anna about the contract."
 
-The assistant can move mail between your folders. It can also move mail to **Trash**, after a confirmation listing each mail; you can restore it from Trash in your mail app.
+The assistant can move mail between your folders, create new folders and rename your own (not Inbox, Sent and the other standard ones); it never deletes a folder. In a shared mailbox, creating or renaming a folder asks you first, since everyone in it sees it. It can also move mail to **Trash**, after a confirmation listing each mail; you can restore it from Trash in your mail app.
 
 > "Save the PDF from Anna's invoice mail into my files."
 
@@ -165,7 +167,11 @@ Private entries stay private. When you ask for a meeting with others, the assist
 >
 > "Find Ben Miller's email address."
 
-The assistant searches your address book and the company directory.
+> "Add Ben Miller to my contacts: ben@example.com, +49 30 1234, ACME."
+>
+> "Ben's new title is CTO."
+
+The assistant searches your address book and the company directory. It can add people to your address book and change them (company directory entries belong to the company and can't be changed). Deleting a contact asks you first, showing who it is, because it can't be undone.
 
 ### Files
 

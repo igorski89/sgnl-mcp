@@ -32,6 +32,9 @@ type fakeMail struct {
 	moveFails   bool  // sent, but the move to Sent fails
 	shared      bool  // the session lists a shared mailbox "team@co.example" (account T)
 	acctIDs     []string
+	folders     []map[string]any // Mailbox/set calls
+	cards       map[string]any   // non-nil: an address book with these cards
+	cardSets    []map[string]any // ContactCard/set calls
 }
 
 func newFakeMail() *fakeMail {
@@ -58,7 +61,11 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 				accts["T"] = map[string]any{"name": "team@co.example", "accountCapabilities": map[string]any{jmap.Mail: map[string]any{}, jmap.Submission: map[string]any{}}}
 				accts["R"] = map[string]any{"name": "alerts@co.example", "isReadOnly": true, "accountCapabilities": map[string]any{jmap.Mail: map[string]any{}}}
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Mail: "A"}, "accounts": accts,
+			prim := map[string]string{jmap.Mail: "A"}
+			if f.cards != nil {
+				prim[jmap.Contacts] = "A"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": prim, "accounts": accts,
 				"downloadUrl": srv.URL + "/download/{accountId}/{blobId}/{name}?type={type}"})
 			return
 		}
@@ -86,6 +93,38 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 					res = map[string]any{"list": f.list}
 				} else {
 					res = map[string]any{"list": []any{f.draft}}
+				}
+			case "Mailbox/set":
+				f.folders = append(f.folders, args)
+				if c, ok := args["create"].(map[string]any); ok {
+					created := map[string]any{}
+					for k := range c {
+						created[k] = map[string]any{"id": "new1"}
+					}
+					res = map[string]any{"created": created}
+				} else {
+					res = map[string]any{"updated": map[string]any{"te": nil}}
+				}
+			case "AddressBook/get":
+				res = map[string]any{"list": []map[string]any{{"id": "ab1", "isDefault": true}}}
+			case "ContactCard/get":
+				list := []any{}
+				ids, _ := args["ids"].([]any)
+				for _, i := range ids {
+					if c, ok := f.cards[i.(string)]; ok {
+						list = append(list, c)
+					}
+				}
+				res = map[string]any{"list": list}
+			case "ContactCard/set":
+				f.cardSets = append(f.cardSets, args)
+				switch {
+				case args["create"] != nil:
+					res = map[string]any{"created": map[string]any{"c": map[string]any{"id": "card9"}}}
+				case args["destroy"] != nil:
+					res = map[string]any{"destroyed": args["destroy"]}
+				default:
+					res = map[string]any{"updated": map[string]any{}}
 				}
 			case "Identity/get":
 				res = map[string]any{"list": []map[string]any{{"id": "id1", "email": "igor@co.example"}}}
