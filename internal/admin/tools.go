@@ -65,7 +65,7 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(t, s, &mcp.Tool{Name: "ops_apps", Annotations: ro,
 			Description: "Every app container: running, deployed version, started when (≈ last deploy), restarts in 24 h, memory against its limit."}, t.appsStatus)
 		add(t, s, &mcp.Tool{Name: "ops_backups", Annotations: ro,
-			Description: "Backups: per job the last successful run and its age, whether the last run failed; the last successful restore drill."}, t.backups)
+			Description: "Backups: per job the last successful run and its age, whether the last run is unfinished (failed or still running); the last successful restore drill."}, t.backups)
 	}
 	if len(t.CertHosts) > 0 {
 		add(t, s, &mcp.Tool{Name: "ops_certs", Annotations: ro,

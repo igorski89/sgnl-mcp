@@ -34,8 +34,8 @@ func fakeGrafana(t *testing.T) (*Grafana, *[]string) {
 		`node_memory_MemTotal_bytes{job="node"}`: vec(val(nil, 8<<30)),
 		`container_start_time_seconds{job="cadvisor",name!=""}`:               vec(val(mcp, now-3600)),
 		`changes(container_start_time_seconds{job="cadvisor",name!=""}[24h])`: vec(val(mcp, 2)),
-		`sgnl_backup_last_success_timestamp_seconds`:                          vec(val(map[string]string{"job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-90000)),
-		`sgnl_backup_last_run_timestamp_seconds`:                              vec(val(map[string]string{"job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-3600)),
+		`sgnl_backup_last_success_timestamp_seconds`:                          vec(val(map[string]string{"job": "node", "exported_job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-90000)),
+		`sgnl_backup_last_run_timestamp_seconds`:                              vec(val(map[string]string{"job": "node", "exported_job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-3600)),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -88,8 +88,8 @@ func TestOps(t *testing.T) {
 		t.Errorf("apps: %q", txt)
 	}
 	txt, isErr = call(t, cs, "ops_backups", nil)
-	if isErr || !strings.Contains(txt, `{"hours_since_success":25,"job":"files"`) ||
-		!strings.Contains(txt, `"last_run_failed":true`) || !strings.Contains(txt, "No restore drill") {
+	if isErr || !strings.Contains(txt, `{"hours_since_success":25,"job":"files"`) || !strings.Contains(txt, `"job":"mail"`) || strings.Contains(txt, `"job":"node"`) ||
+		!strings.Contains(txt, `"last_run_unfinished":true`) || !strings.Contains(txt, "never recorded") {
 		t.Errorf("backups: %q", txt)
 	}
 	for _, s := range *seen {

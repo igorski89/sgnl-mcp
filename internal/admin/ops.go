@@ -387,7 +387,7 @@ type Backup struct {
 	LastSuccess string   `json:"last_success,omitempty"`
 	AgeHours    *float64 `json:"hours_since_success,omitempty"`
 	LastRun     string   `json:"last_run,omitempty"`
-	LastFailed  bool     `json:"last_run_failed" jsonschema:"the last run is newer than the last success"`
+	Unfinished  bool     `json:"last_run_unfinished" jsonschema:"the last run started after the last success: it failed, or is running now"`
 }
 
 type BackupsOut struct {
@@ -419,18 +419,21 @@ func (t *Tools) backups(ctx context.Context, _ *mcp.CallToolRequest, _ struct{})
 		}
 		return jobs[j]
 	}
+	// The job's own name: the textfile's "job" label, which the scrape
+	// renames exported_job (its own job label is the exporter's).
+	jobOf := func(l map[string]string) string { return firstOf(l["exported_job"], l["job"]) }
 	lastOK := map[string]float64{}
 	for _, s := range ok {
-		b := get(s.Labels["job"])
+		b := get(jobOf(s.Labels))
 		b.LastSuccess = when(s.Value)
 		h := round((now-s.Value)/3600, 1)
 		b.AgeHours = &h
-		lastOK[s.Labels["job"]] = s.Value
+		lastOK[jobOf(s.Labels)] = s.Value
 	}
 	for _, s := range runs {
-		b := get(s.Labels["job"])
+		b := get(jobOf(s.Labels))
 		b.LastRun = when(s.Value)
-		b.LastFailed = s.Value > lastOK[s.Labels["job"]]
+		b.Unfinished = s.Value > lastOK[jobOf(s.Labels)]
 	}
 	out := BackupsOut{Backups: []Backup{}}
 	for _, b := range jobs {
@@ -444,9 +447,9 @@ func (t *Tools) backups(ctx context.Context, _ *mcp.CallToolRequest, _ struct{})
 	}
 	switch {
 	case len(out.Backups) == 0:
-		out.Note = "No backup has reported yet (or the backup metrics aren't set up): unknown, not OK."
+		out.Note = "No backup has been recorded yet (or the backup metrics aren't set up): unknown, not OK."
 	case out.DrillSuccess == "":
-		out.Note = "No restore drill has reported yet: unknown."
+		out.Note = "Restore drill: never recorded."
 	default:
 		out.Note = "From the backup job's own report; a job that never ran is caught by the BackupMissing alert (ops_alerts)."
 	}
