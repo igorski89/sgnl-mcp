@@ -150,3 +150,16 @@ func TestDocxEmphasisOnlyAtWordEdges(t *testing.T) {
 		t.Error("a table of 1001 rows allowed")
 	}
 }
+
+// A document ending with a table: widths on every column, and a
+// paragraph after the table (LibreOffice looped on the old form).
+func TestDocxTableAtTheEnd(t *testing.T) {
+	b, err := Docx("# T\n\n| a | b |\n|---|---|\n| 1 | 2 |", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := part(t, b, "word/document.xml")
+	if strings.Contains(doc, "<w:gridCol/>") || strings.Contains(doc, `w:w="0"`) || !strings.Contains(doc, "</w:tbl><w:p/><w:sectPr>") {
+		t.Errorf("table: %s", doc)
+	}
+}

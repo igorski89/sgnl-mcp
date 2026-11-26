@@ -169,14 +169,17 @@ func table(rows [][]string) string {
 	for _, r := range rows {
 		n = max(n, len(r))
 	}
+	// Explicit widths (twips, on a 16 cm text width): LibreOffice loops on
+	// columns without a width.
+	wcol := strconv.Itoa(9000 / max(n, 1))
 	var b strings.Builder
-	b.WriteString(`<w:tbl><w:tblPr><w:tblStyle w:val="Table"/><w:tblW w:w="0" w:type="auto"/><w:tblBorders>`)
+	b.WriteString(`<w:tbl><w:tblPr><w:tblW w:w="9000" w:type="dxa"/><w:tblBorders>`)
 	for _, e := range []string{"top", "left", "bottom", "right", "insideH", "insideV"} {
 		b.WriteString(`<w:` + e + ` w:val="single" w:sz="4" w:space="0" w:color="999999"/>`)
 	}
-	b.WriteString(`</w:tblBorders></w:tblPr><w:tblGrid>`)
+	b.WriteString(`</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="108" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`)
 	for range n {
-		b.WriteString(`<w:gridCol/>`)
+		b.WriteString(`<w:gridCol w:w="` + wcol + `"/>`)
 	}
 	b.WriteString(`</w:tblGrid>`)
 	for i, r := range rows {
@@ -189,7 +192,7 @@ func table(rows [][]string) string {
 			if i == 0 && t != "" {
 				t = "**" + strings.Trim(t, "*") + "**"
 			}
-			b.WriteString(`<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>` + para("", t, 0) + "</w:tc>")
+			b.WriteString(`<w:tc><w:tcPr><w:tcW w:w="` + wcol + `" w:type="dxa"/></w:tcPr>` + para("", t, 0) + "</w:tc>")
 		}
 		b.WriteString("</w:tr>")
 	}
@@ -268,6 +271,11 @@ func Docx(md, title string) ([]byte, error) {
 		}
 	}
 	flush()
+	// A table never ends the body: Word and LibreOffice expect a paragraph
+	// after it (before the section properties).
+	if strings.HasSuffix(body.String(), "</w:tbl>") {
+		body.WriteString("<w:p/>")
+	}
 	doc := xmlHead + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` + body.String() +
 		`<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`
 	var nb strings.Builder
