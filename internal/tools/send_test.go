@@ -126,6 +126,10 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 				default:
 					res = map[string]any{"updated": map[string]any{}}
 				}
+			case "Quota/get":
+				res = map[string]any{"list": []map[string]any{
+					{"id": "q1", "resourceType": "octets", "scope": "account", "used": 300 << 20, "hardLimit": 1 << 30, "types": []string{"Mail"}},
+					{"id": "q2", "resourceType": "count", "scope": "domain", "used": 9, "hardLimit": 5}}}
 			case "Identity/get":
 				res = map[string]any{"list": []map[string]any{{"id": "id1", "email": "igor@co.example", "name": "Igor"}, {"id": "id2", "email": "sales@co.example", "name": "Sales"}}}
 				if args["accountId"] == "T" {

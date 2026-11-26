@@ -58,3 +58,40 @@ func TestIdentitiesAndSendingFromAnAlias(t *testing.T) {
 		t.Errorf("identity: %v", sub)
 	}
 }
+
+func TestMailboxSize(t *testing.T) {
+	f := newFakeMail()
+	cs := sendSession(t, f, nil, false)
+	txt, isErr := callTool(t, cs, "mailbox_size", nil)
+	if isErr || !strings.Contains(txt, `"used_mb":300`) || !strings.Contains(txt, `"limit_mb":1024`) || !strings.Contains(txt, `"percent_used":29`) ||
+		strings.Contains(txt, "messages_limit") || !strings.Contains(txt, `"largest_folders":[`) {
+		t.Errorf("mailbox_size: %s", txt)
+	}
+}
+
+func TestMailLabels(t *testing.T) {
+	f := newFakeMail()
+	f.draft["keywords"] = map[string]bool{"$seen": true, "invoices": true, "$label1": true}
+	cs := sendSession(t, f, nil, false)
+	txt, isErr := callTool(t, cs, "mail_flag", map[string]any{"ids": []string{"d1"}, "add_labels": []string{"Paid", "paid"}, "remove_labels": []string{"todo"}})
+	if isErr {
+		t.Fatalf("flag: %s", txt)
+	}
+	b, _ := json.Marshal(f.updates[len(f.updates)-1]["update"])
+	if string(b) != `{"d1":{"keywords/paid":true,"keywords/todo":null}}` {
+		t.Errorf("patch: %s", b)
+	}
+	for _, bad := range []map[string]any{
+		{"add_labels": []string{"$seen"}}, {"add_labels": []string{"a/b"}}, {"remove_labels": []string{"$flagged"}},
+		{"add_labels": []string{"x"}, "remove_labels": []string{"X"}}, {"add_labels": []string{"has space"}},
+	} {
+		bad["ids"] = []string{"d1"}
+		n := len(f.updates)
+		if txt, isErr := callTool(t, cs, "mail_flag", bad); !isErr || len(f.updates) != n {
+			t.Errorf("%v allowed: %s", bad, txt)
+		}
+	}
+	if txt, _ := callTool(t, cs, "mail_read", map[string]any{"id": "d1"}); !strings.Contains(txt, `"labels":["invoices"]`) {
+		t.Errorf("read labels: %s", txt)
+	}
+}

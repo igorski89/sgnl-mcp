@@ -82,6 +82,8 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Create a mail folder (optionally inside another). In a shared mailbox the person is asked first, since everyone in it sees it."}, t.mailFolderCreate)
 	add(t, s, &mcp.Tool{Name: "mail_folder_rename", Annotations: wr,
 		Description: "Rename one of your own mail folders (not Inbox, Sent, Drafts, Trash and the other standard ones). In a shared mailbox the person is asked first. Folders are never deleted here."}, t.mailFolderRename)
+	add(t, s, &mcp.Tool{Name: "mailbox_size", Annotations: ro,
+		Description: "How much mail space you use: MB used, your limit (if any) and percent, and your largest folders by number of messages."}, t.mailboxSize)
 	add(t, s, &mcp.Tool{Name: "identity_list", Annotations: ro,
 		Description: "The addresses you can send from (your own and your aliases; with account: a shared mailbox's), the main one first. Pass one as from to mail_draft_create to send from it."}, t.identityList)
 	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
@@ -91,7 +93,7 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "mail_draft_update", Annotations: wr,
 		Description: "Change a draft (recipients, subject, text, attachments: existing ones are kept unless removed, attach_files adds files from the person's drive). Only messages in Drafts can be changed; nothing is sent."}, t.mailDraftUpdate)
 	add(t, s, &mcp.Tool{Name: "mail_flag", Annotations: wr,
-		Description: "Mark messages read/unread and/or starred/unstarred."}, t.mailFlag)
+		Description: "Mark messages read/unread, starred/unstarred, and put labels (tags) on or take them off. Mail apps show labels as tags; mail_search finds mail by label."}, t.mailFlag)
 	add(t, s, &mcp.Tool{Name: "mail_move", Annotations: wr,
 		Description: "Move messages to another folder (e.g. Archive or one of your folders). Not to Trash: use mail_trash."}, t.mailMove)
 	add(t, s, &mcp.Tool{Name: "mail_trash", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},

@@ -30,6 +30,7 @@ const (
 	Principals   = "urn:ietf:params:jmap:principals"
 	Availability = "urn:ietf:params:jmap:principals:availability"
 	Vacation     = "urn:ietf:params:jmap:vacationresponse"
+	Quota        = "urn:ietf:params:jmap:quota"
 )
 
 var allowed = []string{
@@ -39,7 +40,7 @@ var allowed = []string{
 	"AddressBook/get", "ContactCard/get", "ContactCard/query",
 	"Principal/get", "Principal/query", "Principal/getAvailability",
 	"VacationResponse/get", "VacationResponse/set", "CalendarEvent/parse",
-	"Mailbox/set", "ContactCard/set",
+	"Mailbox/set", "ContactCard/set", "Quota/get",
 }
 
 // cardFields: what a contact card may carry when created or changed here.

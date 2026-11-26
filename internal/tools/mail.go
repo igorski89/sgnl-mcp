@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -180,17 +181,19 @@ type MailSearchIn struct {
 	Since  string `json:"since,omitempty" jsonschema:"only mail received on or after this date (YYYY-MM-DD)"`
 	Folder string `json:"folder,omitempty" jsonschema:"only this folder (name from mailbox_list)"`
 	Unread bool   `json:"unread,omitempty" jsonschema:"only unread mail"`
+	Label  string `json:"label,omitempty" jsonschema:"only mail with this label (see mail_flag)"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"how many messages, 1-50 (default 10)"`
 }
 
 type MailSummary struct {
-	ID       string `json:"id" jsonschema:"pass to mail_read, mail_thread_read, mail_flag, mail_move, mail_draft_create (reply_to)"`
-	From     string `json:"from"`
-	Subject  string `json:"subject"`
-	Received string `json:"received"`
-	Unread   bool   `json:"unread,omitempty"`
-	Folder   string `json:"folder,omitempty"`
-	Preview  string `json:"preview"`
+	ID       string   `json:"id" jsonschema:"pass to mail_read, mail_thread_read, mail_flag, mail_move, mail_draft_create (reply_to)"`
+	From     string   `json:"from"`
+	Subject  string   `json:"subject"`
+	Received string   `json:"received"`
+	Unread   bool     `json:"unread,omitempty"`
+	Folder   string   `json:"folder,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
+	Preview  string   `json:"preview"`
 }
 
 type MailSearchOut struct {
@@ -237,7 +240,7 @@ func (t *Tools) query(ctx context.Context, tok string, s *jmap.Session, acct str
 		}
 		slices.Sort(folders)
 		out = append(out, MailSummary{e.ID, addrs(e.From), textx.Visible(e.Subject), e.ReceivedAt, !e.Keywords["$seen"],
-			strings.Join(folders, ", "), textx.Visible(e.Preview)})
+			strings.Join(folders, ", "), labelsOf(e.Keywords), textx.Visible(e.Preview)})
 	}
 	return out, nil
 }
@@ -259,6 +262,13 @@ func (t *Tools) mailSearch(ctx context.Context, _ *mcp.CallToolRequest, in MailS
 	}
 	if in.Unread {
 		filter["notKeyword"] = "$seen"
+	}
+	if in.Label != "" {
+		l, err := label(in.Label)
+		if err != nil {
+			return nil, MailSearchOut{}, err
+		}
+		filter["hasKeyword"] = l
 	}
 	if in.Since != "" {
 		d, err := time.Parse("2006-01-02", in.Since)
@@ -318,6 +328,7 @@ type MailMessage struct {
 	Received    string       `json:"received"`
 	Text        string       `json:"text"`
 	Truncated   bool         `json:"truncated,omitempty"`
+	Labels      []string     `json:"labels,omitempty"`
 	Attachments []Attachment `json:"attachments"`
 }
 
@@ -393,7 +404,8 @@ func bodyParts(e emailFull) []part {
 }
 
 func toMessage(e emailFull, limit int) MailMessage {
-	m := MailMessage{ID: e.ID, From: addrs(e.From), To: addrs(e.To), Cc: addrs(e.Cc), Subject: e.Subject, Received: e.ReceivedAt, Attachments: []Attachment{}}
+	m := MailMessage{ID: e.ID, From: addrs(e.From), To: addrs(e.To), Cc: addrs(e.Cc), Subject: e.Subject, Received: e.ReceivedAt, Attachments: []Attachment{},
+		Labels: labelsOf(e.Keywords)}
 	var b strings.Builder
 	for _, p := range bodyParts(e) {
 		v, ok := e.BodyValues[p.PartID]
@@ -922,6 +934,33 @@ type MailFlagIn struct {
 	IDs     []string `json:"ids" jsonschema:"message ids (max 100)"`
 	Read    *bool    `json:"read,omitempty" jsonschema:"true: mark read, false: mark unread"`
 	Starred *bool    `json:"starred,omitempty" jsonschema:"true: star, false: unstar"`
+	// Labels are the mail server's keywords, as mail apps show tags.
+	AddLabels    []string `json:"add_labels,omitempty" jsonschema:"labels (tags) to put on, e.g. invoices; letters, digits, '.', '_', '-'"`
+	RemoveLabels []string `json:"remove_labels,omitempty" jsonschema:"labels to take off"`
+}
+
+// label: a label as a keyword: lowercase, letters, digits, '.', '_', '-',
+// never a system keyword ($seen, $flagged, …).
+func label(s string) (string, error) {
+	l := strings.ToLower(strings.TrimSpace(s))
+	if !reLabel.MatchString(l) {
+		return "", fmt.Errorf("label %q: 1-40 letters, digits, '.', '_' or '-', starting with a letter or digit", oneLine(s, 40))
+	}
+	return l, nil
+}
+
+var reLabel = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,39}$`)
+
+// labelsOf: a message's labels (its keywords without the system ones).
+func labelsOf(kw map[string]bool) []string {
+	var out []string
+	for k, on := range kw {
+		if on && !strings.HasPrefix(k, "$") && reLabel.MatchString(k) {
+			out = append(out, k)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 type MailChangeOut struct {
@@ -932,10 +971,25 @@ func (t *Tools) mailFlag(ctx context.Context, _ *mcp.CallToolRequest, in MailFla
 	if len(in.IDs) == 0 || len(in.IDs) > 100 {
 		return nil, MailChangeOut{}, fmt.Errorf("give 1-100 message ids")
 	}
-	if in.Read == nil && in.Starred == nil {
-		return nil, MailChangeOut{}, fmt.Errorf("say read and/or starred")
+	if in.Read == nil && in.Starred == nil && len(in.AddLabels) == 0 && len(in.RemoveLabels) == 0 {
+		return nil, MailChangeOut{}, fmt.Errorf("say read, starred, add_labels or remove_labels")
+	}
+	if len(in.AddLabels)+len(in.RemoveLabels) > 10 {
+		return nil, MailChangeOut{}, fmt.Errorf("at most 10 labels at once")
 	}
 	patch := map[string]any{}
+	for i, ls := range [][]string{in.AddLabels, in.RemoveLabels} {
+		for _, x := range ls {
+			l, err := label(x)
+			if err != nil {
+				return nil, MailChangeOut{}, err
+			}
+			if v, seen := patch["keywords/"+l]; seen && v != boolOrNil(i == 0) {
+				return nil, MailChangeOut{}, fmt.Errorf("label %s is both added and removed", l)
+			}
+			patch["keywords/"+l] = boolOrNil(i == 0)
+		}
+	}
 	if in.Read != nil {
 		patch["keywords/$seen"] = boolOrNil(*in.Read)
 	}
@@ -1086,5 +1140,79 @@ func (t *Tools) identityList(ctx context.Context, _ *mcp.CallToolRequest, _ InAc
 		}
 		return strings.Compare(strings.ToLower(a.Email), strings.ToLower(b.Email))
 	})
+	return nil, out, nil
+}
+
+// ---- mailbox_size: how much of their mail space the person uses.
+
+type MailboxSizeOut struct {
+	UsedMB   float64       `json:"used_mb"`
+	LimitMB  *float64      `json:"limit_mb,omitempty"`
+	Limit    string        `json:"limit,omitempty"`
+	Percent  *int          `json:"percent_used,omitempty"`
+	Messages *int          `json:"messages_limit,omitempty" jsonschema:"a limit on the number of messages, if there is one"`
+	Folders  []FolderCount `json:"largest_folders" jsonschema:"by number of messages (the mail server doesn't report folder sizes)"`
+}
+
+type FolderCount struct {
+	Name     string `json:"name"`
+	Messages int    `json:"messages"`
+}
+
+func (t *Tools) mailboxSize(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, MailboxSizeOut, error) {
+	tok, s, acct, err := t.mailSession(ctx)
+	if err != nil {
+		return nil, MailboxSizeOut{}, err
+	}
+	r, err := t.JMAP.Invoke(ctx, tok, s, []string{jmap.Core, jmap.Quota},
+		jmap.Call{Method: "Quota/get", Args: map[string]any{"accountId": acct}})
+	if err != nil {
+		return nil, MailboxSizeOut{}, err
+	}
+	var got struct {
+		List []struct {
+			ResourceType string   `json:"resourceType"`
+			Scope        string   `json:"scope"`
+			Used         float64  `json:"used"`
+			HardLimit    *float64 `json:"hardLimit"`
+			Types        []string `json:"types"`
+		}
+	}
+	_ = json.Unmarshal(r[0], &got)
+	out := MailboxSizeOut{Folders: []FolderCount{}}
+	round1 := func(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
+	found := false
+	for _, q := range got.List {
+		if q.Scope != "" && q.Scope != "account" {
+			continue
+		}
+		switch q.ResourceType {
+		case "octets":
+			found = true
+			out.UsedMB = round1(q.Used / (1 << 20))
+			if q.HardLimit != nil && *q.HardLimit > 0 {
+				l := round1(*q.HardLimit / (1 << 20))
+				p := int(q.Used * 100 / *q.HardLimit)
+				out.LimitMB, out.Percent = &l, &p
+			}
+		case "count":
+			if q.HardLimit != nil && *q.HardLimit > 0 {
+				n := int(*q.HardLimit)
+				out.Messages = &n
+			}
+		}
+	}
+	if !found {
+		return nil, MailboxSizeOut{}, fmt.Errorf("the mail server doesn't report this mailbox's size")
+	}
+	if out.LimitMB == nil {
+		out.Limit = "no limit set"
+	}
+	if mbs, err := t.mailboxes(ctx, tok, s, acct); err == nil {
+		slices.SortFunc(mbs, func(a, b mailbox) int { return b.TotalEmails - a.TotalEmails })
+		for _, m := range mbs[:min(5, len(mbs))] {
+			out.Folders = append(out.Folders, FolderCount{textx.Visible(m.Name), m.TotalEmails})
+		}
+	}
 	return nil, out, nil
 }
