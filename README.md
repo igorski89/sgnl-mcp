@@ -276,6 +276,34 @@ Then, in Claude Code:
 claude mcp add --transport http --client-id <client> --callback-port <port> sgnl-<instance> <public url>
 ```
 
+## Smoke test
+
+`cmd/sgnl-mcp-smoke` calls every user tool against the real apps through a
+running gateway, as two dedicated test accounts, and prints a table of
+tool, step, ok/failed/skipped and time. The exit code is 0 when every step
+passes, 1 when one fails, 2 when the run can't start, and 3 when a new login
+is needed.
+
+- **What it does with confirmations:**
+  - Private changes, and changes between the two accounts, are accepted
+    after 2 s. That includes mail, invitations, sharing, and sending as a
+    shared mailbox both accounts are in.
+  - Anything to an outside address is checked (OUTSIDE, the recipients,
+    From) and then declined. So is `logout_everywhere`.
+  - A question is accepted only if it names the run's own item, says nothing
+    goes OUTSIDE, and names no address other than the test accounts'.
+- **Before anything changes**, `whoami` must match the expected usernames,
+  the two accounts must differ, and neither may be an admin.
+- **Clean-up:** everything it creates is named `[smoke] …`. A sweep removes
+  any run's leftovers at the start and this run's items at the end. One
+  `[smoke] folder` per mailbox stays, because no tool deletes mail folders.
+- **Coverage:** `internal/smoke/matrix.go` says how each tool is covered. A
+  test fails when a registered tool is missing from it or has no step.
+- **Settings:** the environment is documented at the top of
+  `cmd/sgnl-mcp-smoke/main.go`. Tokens come from two files (JSON with a
+  refresh token, mode 600), which are rewritten when the token is refreshed.
+  `-read-only` makes no changes; `-only tool,…` limits the run.
+
 ## Container
 
 `ghcr.io/igorski89/sgnl-mcp:<version>` (published for `v*` tags; see
