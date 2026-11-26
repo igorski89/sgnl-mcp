@@ -25,7 +25,7 @@ import (
 
 var ErrNoConfirm = fmt.Errorf("this needs the person's confirmation, and their app can't ask for it (no MCP elicitation support)")
 
-var ErrUntrustedClient = fmt.Errorf("this needs the person's confirmation, and this AI app isn't trusted yet to ask them (it might answer by itself): send the draft from your mail app, or use Claude Code")
+var ErrUntrustedClient = fmt.Errorf("this needs the person's confirmation, and this AI app isn't trusted yet to ask them (it might answer by itself): use Claude Code, or do it in the app itself (a draft can be sent from the mail app)")
 
 // key signs pending confirmations; new per process, so a restart drops
 // them (the person is simply asked again).

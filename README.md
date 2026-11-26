@@ -10,7 +10,9 @@ sending a draft after the person confirms it. Nothing is ever deleted, and
 nothing is sent without that confirmation.
 
 For people using it: [docs/user-guide.md](docs/user-guide.md) (what to ask, what
-needs your click, staying safe).
+needs your click, staying safe). For the instance's admins:
+[docs/admin-guide.md](docs/admin-guide.md) (the admin connection: people,
+groups, the server's health).
 
 ## Tools
 
