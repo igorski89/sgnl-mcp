@@ -94,10 +94,30 @@ func TestXlsxEditRealFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(lines) != 2 {
+			if len(lines) < 2 || len(lines) > 3 {
 				t.Errorf("lines: %v", lines)
 			}
-			unchangedExcept(t, data, out, sh.part, "xl/styles.xml")
+			// Other sheets change only where formula results were dropped;
+			// the workbook only gains fullCalcOnLoad.
+			others := []string{sh.part, "xl/styles.xml", "xl/workbook.xml"}
+			p2x, _ := openPkg(out, ".xlsx")
+			for _, o := range w.sheets {
+				if o.part == sh.part {
+					continue
+				}
+				ob, _ := p.read(o.part)
+				exp, had, _ := dropFormulaValues(ob)
+				if had {
+					others = append(others, o.part)
+					if got, _ := p2x.read(o.part); !bytes.Equal(got, exp) {
+						t.Errorf("sheet %s changed beyond the dropped results", o.name)
+					}
+				}
+			}
+			if wb, _ := p2x.read("xl/workbook.xml"); len(lines) == 3 && !bytes.Contains(wb, []byte(`fullCalcOnLoad="1"`)) {
+				t.Error("no fullCalcOnLoad")
+			}
+			unchangedExcept(t, data, out, others...)
 			// Every original row is still there, byte for byte.
 			p2, _ := openPkg(out, ".xlsx")
 			nb, _ := p2.read(sh.part)
@@ -107,7 +127,8 @@ func TestXlsxEditRealFiles(t *testing.T) {
 				if r.r == s.lastRow()+1 || r.r == 200 {
 					continue
 				}
-				if !bytes.Contains(nb, orig[r.start:r.end]) {
+				want, _, _ := dropFormulaValues(orig[r.start:r.end]) // only cached formula results go
+				if !bytes.Contains(nb, want) {
 					t.Errorf("row %d changed", r.r)
 				}
 			}
@@ -182,6 +203,9 @@ func TestDocxEditRealFiles(t *testing.T) {
 			}
 			target := ""
 			for _, x := range doc.texts {
+				if x.field {
+					continue
+				}
 				for _, w := range strings.Fields(x.text) {
 					if len(w) > 4 && strings.Count(full.String(), w) == 1 {
 						target = w
@@ -195,6 +219,21 @@ func TestDocxEditRealFiles(t *testing.T) {
 			reps := []TextReplace{}
 			if target != "" {
 				reps = append(reps, TextReplace{Old: target, New: "REPLACED-BY-TEST"})
+			}
+			if strings.Contains(f, "changeTracking_on") {
+				if _, _, err := EditDocx(data, "x", nil); err == nil || !strings.Contains(err.Error(), "tracks changes") {
+					t.Errorf("tracked document edited: %v", err)
+				}
+				return
+			}
+			// A field's text is never replaced.
+			for _, x := range doc.texts {
+				if x.field && strings.TrimSpace(x.text) != "" && strings.Count(full.String(), x.text) == 1 {
+					if _, _, err := EditDocx(data, "", []TextReplace{{Old: x.text, New: "y"}}); err == nil || !strings.Contains(err.Error(), "field") {
+						t.Errorf("field text %q replaced: %v", x.text, err)
+					}
+					break
+				}
 			}
 			out, lines, err := EditDocx(data, "## Added by test\n\nA paragraph.\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |", reps)
 			if err != nil {
@@ -294,5 +333,71 @@ func TestOfficeEditRefusals(t *testing.T) {
 	sb, _ := p.read("xl/worksheets/sheet1.xml")
 	if bytes.Contains(sb, []byte("<f>")) || !bytes.Contains(sb, []byte(`t="inlineStr"`)) {
 		t.Errorf("formula text: %s", sb)
+	}
+}
+
+// A formula that depends on a changed cell: its old result is dropped (the
+// formula kept), and the workbook recalculates on load.
+func TestXlsxFormulaResultsDropped(t *testing.T) {
+	data, _ := os.ReadFile("testdata/ms-shared_formulas.xlsx")
+	out, lines, err := EditXlsx(data, []XlsxEdit{{Sheet: "Label", SetCells: map[string]any{"B2": "CHANGED"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(lines[len(lines)-1], "worked out again") {
+		t.Errorf("lines: %v", lines)
+	}
+	p, _ := openPkg(out, ".xlsx")
+	sb, _ := p.read("xl/worksheets/sheet1.xml")
+	s, _ := parseSheet(sb)
+	for _, r := range s.rows {
+		for _, c := range r.cells {
+			if c.formula && c.v != "" {
+				t.Errorf("%s%d keeps its old result %q", colName(c.col), r.r, c.v)
+			}
+		}
+	}
+	if !bytes.Contains(sb, []byte(`<f t="shared" ref="A2:A41" si="0">B2</f>`)) {
+		t.Error("the formula is gone")
+	}
+	// No formulas anywhere: nothing but the edited sheet changes.
+	x, _ := Xlsx([]Sheet{{Name: "S", Rows: [][]any{{"a"}}}})
+	out2, lines2, _ := EditXlsx(x, []XlsxEdit{{Sheet: "S", SetCells: map[string]any{"B1": 1.0}}})
+	if len(lines2) != 1 {
+		t.Errorf("lines: %v", lines2)
+	}
+	unchangedExcept(t, x, out2, "xl/worksheets/sheet1.xml")
+}
+
+func TestOfficeProtectedRefused(t *testing.T) {
+	x, _ := Xlsx([]Sheet{{Name: "S", Rows: [][]any{{"a"}}}})
+	p, _ := openPkg(x, ".xlsx")
+	sb, _ := p.read("xl/worksheets/sheet1.xml")
+	p.set("xl/worksheets/sheet1.xml", bytes.Replace(sb, []byte("</sheetData>"), []byte(`</sheetData><sheetProtection sheet="1"/>`), 1))
+	wb, _ := p.read("xl/workbook.xml")
+	p.set("xl/workbook.xml", bytes.Replace(wb, []byte("<sheets>"), []byte(`<workbookProtection lockStructure="1"/><sheets>`), 1))
+	prot, _ := p.bytes()
+	if _, _, err := EditXlsx(prot, []XlsxEdit{{Sheet: "S", SetCells: map[string]any{"B1": 1.0}}}); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Errorf("protected sheet: %v", err)
+	}
+	if _, _, err := EditXlsx(prot, []XlsxEdit{{AddSheet: &Sheet{Name: "N"}}}); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Errorf("locked workbook: %v", err)
+	}
+	// Formatted empty rows don't count as used.
+	sb2 := bytes.Replace(sb, []byte("</sheetData>"), []byte(`<row r="5"><c r="A5" s="0"/></row></sheetData>`), 1)
+	s, _ := parseSheet(sb2)
+	if s.lastRow() != 1 {
+		t.Errorf("last row: %d", s.lastRow())
+	}
+	// A document with another prefix for the Word namespace: refused.
+	d, _ := Docx("Hello", "")
+	pd, _ := openPkg(d, ".docx")
+	db, _ := pd.read("word/document.xml")
+	pd.set("word/document.xml", bytes.ReplaceAll(bytes.ReplaceAll(db, []byte("<w:"), []byte("<x:")), []byte("</w:"), []byte("</x:")))
+	nd := pd.changed["word/document.xml"]
+	pd.set("word/document.xml", bytes.Replace(nd, []byte("xmlns:w="), []byte("xmlns:x="), 1))
+	other, _ := pd.bytes()
+	if _, _, err := EditDocx(other, "more", nil); err == nil {
+		t.Error("other prefix edited")
 	}
 }

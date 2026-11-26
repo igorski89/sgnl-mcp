@@ -20,6 +20,7 @@ const wordNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 type wText struct {
 	start, end int // the whole <w:t …>…</w:t>
 	text       string
+	field      bool // a field's result (updated by the app: a change wouldn't last)
 }
 
 type wDoc struct {
@@ -37,6 +38,7 @@ func parseDocument(b []byte) (*wDoc, error) {
 	var buf strings.Builder
 	bodyDepth := -1
 	sectStart, sectEnd := -1, -1
+	fldSimple, fieldDepth, inResult := 0, 0, 0
 	for {
 		off := int(d.InputOffset())
 		tok, err := d.RawToken()
@@ -61,6 +63,9 @@ func parseDocument(b []byte) (*wDoc, error) {
 				if wPrefix == "" || t.Name.Space != wPrefix {
 					return nil, fmt.Errorf("this document uses a format (strict OOXML?) the editor doesn't handle")
 				}
+				if wPrefix != "w" {
+					return nil, fmt.Errorf("this document uses an XML form the editor doesn't handle")
+				}
 			}
 			if t.Name.Space == wPrefix {
 				switch {
@@ -68,8 +73,26 @@ func parseDocument(b []byte) (*wDoc, error) {
 					bodyDepth = depth
 				case t.Name.Local == "sectPr" && depth == bodyDepth+1:
 					sectStart = off // the last one wins: the body's own
+				case t.Name.Local == "fldSimple":
+					fldSimple++
+				case t.Name.Local == "fldChar":
+					switch attr(t, "fldCharType") {
+					case "begin":
+						fieldDepth++
+					case "separate":
+						if fieldDepth > 0 {
+							inResult++
+						}
+					case "end":
+						if inResult > 0 {
+							inResult--
+						}
+						if fieldDepth > 0 {
+							fieldDepth--
+						}
+					}
 				case t.Name.Local == "t":
-					doc.texts = append(doc.texts, wText{start: off})
+					doc.texts = append(doc.texts, wText{start: off, field: fldSimple > 0 || inResult > 0})
 					cur = &doc.texts[len(doc.texts)-1]
 					buf.Reset()
 				}
@@ -81,6 +104,8 @@ func parseDocument(b []byte) (*wDoc, error) {
 		case xml.EndElement:
 			if t.Name.Space == wPrefix {
 				switch {
+				case t.Name.Local == "fldSimple" && fldSimple > 0:
+					fldSimple--
 				case t.Name.Local == "t" && cur != nil:
 					cur.end = int(d.InputOffset())
 					cur.text = buf.String()
@@ -153,6 +178,9 @@ func EditDocx(data []byte, appendMD string, reps []TextReplace) ([]byte, []strin
 		}
 		return nil, nil, err
 	}
+	if err := docSettings(p, docPart); err != nil {
+		return nil, nil, err
+	}
 	var all strings.Builder
 	at := make([]int, len(doc.texts))
 	for i, t := range doc.texts {
@@ -185,6 +213,9 @@ func EditDocx(data []byte, appendMD string, reps []TextReplace) ([]byte, []strin
 		}
 		if idx < 0 {
 			return nil, nil, fmt.Errorf("%q spans text with different formatting: it can't be replaced exactly here; replace a part within one formatting (e.g. one word or sentence)", snip(r.Old, 60))
+		}
+		if doc.texts[idx].field {
+			return nil, nil, fmt.Errorf("%q is part of a field (a date, page number, reference…) the office app fills in: it isn't replaced here", snip(r.Old, 60))
 		}
 		if used[idx] {
 			return nil, nil, fmt.Errorf("two replacements in the same piece of text: give them as one")
@@ -231,4 +262,44 @@ func firstLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// docSettings: refuse a document that is protected against editing, or
+// that tracks changes (a change made here wouldn't be tracked).
+func docSettings(p *pkg, docPart string) error {
+	rels, _, _, err := p.rels(docPart)
+	if err != nil {
+		return nil
+	}
+	for _, r := range rels {
+		if !strings.HasSuffix(r[1], "/settings") {
+			continue
+		}
+		b, err := p.read(r[0])
+		if err != nil || b == nil {
+			continue
+		}
+		d := xml.NewDecoder(bytes.NewReader(b))
+		for {
+			tok, err := d.Token()
+			if err != nil {
+				break
+			}
+			se, ok := tok.(xml.StartElement)
+			if !ok || se.Name.Space != wordNS {
+				continue
+			}
+			switch se.Name.Local {
+			case "documentProtection":
+				if v := attr(se, "enforcement"); v == "1" || v == "true" || v == "on" {
+					return fmt.Errorf("this document is protected against editing: change it in your office app")
+				}
+			case "trackRevisions":
+				if v := attr(se, "val"); v == "" || v == "1" || v == "true" || v == "on" {
+					return fmt.Errorf("this document tracks changes: change it in your office app, so the change is tracked")
+				}
+			}
+		}
+	}
+	return nil
 }

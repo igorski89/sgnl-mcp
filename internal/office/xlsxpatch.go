@@ -62,6 +62,7 @@ type xSheet struct {
 	merged           [][4]int // c1, r1, c2, r2
 	dimStart, dimEnd int
 	dimRef           string
+	protected        bool
 }
 
 // parseSheet: the sheet's rows and cells with their byte ranges.
@@ -110,6 +111,10 @@ func parseSheet(b []byte) (*xSheet, error) {
 				s.sdStart, s.sdInner = off, int(d.InputOffset())
 			case depth == 2 && name == "dimension":
 				s.dimStart, s.dimRef = off, attr(t, "ref")
+			case depth == 2 && name == "sheetProtection":
+				if v := attr(t, "sheet"); v == "1" || v == "true" {
+					s.protected = true
+				}
 			case name == "mergeCell":
 				ref := attr(t, "ref")
 				a, b2, ok := strings.Cut(ref, ":")
@@ -195,11 +200,15 @@ func (s *xSheet) inMerge(col, row int) bool {
 	return false
 }
 
+// lastRow: the last row with a value or formula (formatted empty cells
+// don't count, so a template's styled rows don't push data down).
 func (s *xSheet) lastRow() int {
 	last := 0
 	for _, r := range s.rows {
-		if len(r.cells) > 0 {
-			last = r.r
+		for _, c := range r.cells {
+			if c.formula || c.v != "" || c.inline != "" {
+				last = r.r
+			}
 		}
 	}
 	return last
@@ -259,6 +268,7 @@ type wbSheet struct {
 }
 
 type workbook struct {
+	locked    bool // structure protected: no sheets added
 	p         *pkg
 	xml       []byte
 	sheets    []wbSheet
@@ -300,6 +310,11 @@ func openWorkbook(p *pkg) (*workbook, error) {
 				if a.Name.Space == "xmlns" && a.Value == "http://schemas.openxmlformats.org/officeDocument/2006/relationships" {
 					w.rPrefix = a.Name.Local
 				}
+			}
+		}
+		if se.Name.Local == "workbookProtection" && se.Name.Space == "" {
+			if v := attr(se, "lockStructure"); v == "1" || v == "true" {
+				w.locked = true
 			}
 		}
 		if se.Name.Local == "sheet" && se.Name.Space == "" {
@@ -518,6 +533,35 @@ func EditXlsx(data []byte, edits []XlsxEdit) ([]byte, []string, error) {
 		p.set(ws.part, nb)
 		lines = append(lines, ls...)
 	}
+	// Cells changed: formula results that may depend on them are computed
+	// afresh when the file is next opened (in every sheet: formulas may
+	// refer across sheets).
+	if len(order) > 0 {
+		anyF := false
+		for _, ws := range w.sheets {
+			if !strings.HasPrefix(ws.part, "xl/worksheets/") {
+				continue
+			}
+			sb, err := p.read(ws.part)
+			if err != nil || sb == nil {
+				continue
+			}
+			nb, had, err := dropFormulaValues(sb)
+			if err != nil {
+				return nil, nil, fmt.Errorf("sheet %q has a structure the editor doesn't fully understand: not changing it", ws.name)
+			}
+			if had {
+				anyF = true
+				p.set(ws.part, nb)
+			}
+		}
+		if anyF {
+			if err := w.fullCalcOnLoad(); err != nil {
+				return nil, nil, fmt.Errorf("this workbook's settings have a form the editor doesn't handle")
+			}
+			lines = append(lines, "Formula results are worked out again when the file is next opened in an office app (until then they show empty here)")
+		}
+	}
 	for _, e := range edits {
 		if e.AddSheet != nil {
 			l, err := w.addSheet(*e.AddSheet)
@@ -538,6 +582,9 @@ func (w *workbook) editSheet(name string, b []byte, es []XlsxEdit) ([]byte, []st
 	s, err := parseSheet(b)
 	if err != nil {
 		return nil, nil, err
+	}
+	if s.protected {
+		return nil, nil, fmt.Errorf("sheet %q is protected: change it in your office app", name)
 	}
 	type target struct {
 		col, row int
@@ -735,6 +782,9 @@ func sortEdits(es []edit) []edit {
 }
 
 func (w *workbook) addSheet(sh Sheet) (string, error) {
+	if w.locked {
+		return "", fmt.Errorf("this workbook's structure is protected: sheets can't be added here")
+	}
 	name := strings.TrimSpace(badSheetChr.ReplaceAllString(clean(sh.Name), " "))
 	if r := []rune(name); len(r) > 31 {
 		name = string(r[:31])
@@ -822,4 +872,89 @@ func (w *workbook) addSheet(sh Sheet) (string, error) {
 	w.p.set("[Content_Types].xml", []byte(cts))
 	w.sheets = append(w.sheets, wbSheet{name: name, rid: ridS, part: part, id: maxID + 1})
 	return fmt.Sprintf("New sheet %q at the end (%d row(s))", name, len(sh.Rows)), nil
+}
+
+// dropFormulaValues: the sheet with every formula cell's cached result
+// removed (the formula itself kept), so office apps compute it afresh on
+// opening instead of showing a result from before the change (LibreOffice
+// keeps cached results even with fullCalcOnLoad); whether it had any.
+func dropFormulaValues(b []byte) ([]byte, bool, error) {
+	d := xml.NewDecoder(bytes.NewReader(b))
+	depth, cellDepth := 0, -1
+	hasF := false
+	var vStart int
+	var pending []edit
+	var cellVs []edit
+	for {
+		off := int(d.InputOffset())
+		tok, err := d.RawToken()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, false, errNotUnderstood
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			depth++
+			switch {
+			case t.Name.Local == "c" && t.Name.Space == "":
+				cellDepth, hasF, cellVs = depth, false, nil
+			case cellDepth > 0 && depth == cellDepth+1 && t.Name.Local == "f":
+				hasF = true
+			case cellDepth > 0 && depth == cellDepth+1 && t.Name.Local == "v":
+				vStart = off
+			}
+		case xml.EndElement:
+			switch {
+			case cellDepth > 0 && depth == cellDepth+1 && t.Name.Local == "v":
+				cellVs = append(cellVs, edit{vStart, int(d.InputOffset()), ""})
+			case depth == cellDepth && t.Name.Local == "c":
+				if hasF {
+					pending = append(pending, cellVs...)
+				}
+				cellDepth = -1
+			}
+			depth--
+		}
+	}
+	if len(pending) == 0 {
+		return b, false, nil
+	}
+	nb, err := splice(b, pending)
+	return nb, true, err
+}
+
+// fullCalcOnLoad: the workbook asks Excel to recalculate everything when
+// opened.
+func (w *workbook) fullCalcOnLoad() error {
+	wb := string(w.xml)
+	if i := strings.Index(wb, "<calcPr"); i >= 0 {
+		j := strings.Index(wb[i:], ">")
+		if j < 0 {
+			return errNotUnderstood
+		}
+		tag := wb[i : i+j+1]
+		if strings.Contains(tag, "fullCalcOnLoad=") {
+			tag2 := regexp.MustCompile(`fullCalcOnLoad="[^"]*"`).ReplaceAllString(tag, `fullCalcOnLoad="1"`)
+			wb = wb[:i] + tag2 + wb[i+j+1:]
+		} else {
+			wb = wb[:i] + "<calcPr fullCalcOnLoad=\"1\"" + tag[len("<calcPr"):] + wb[i+j+1:]
+		}
+	} else {
+		// Its place in the workbook: before these, else at the end.
+		at := strings.Index(wb, "</workbook>")
+		for _, next := range []string{"<oleSize", "<customWorkbookViews", "<pivotCaches", "<smartTagPr", "<smartTagTypes", "<webPublishing", "<fileRecoveryPr", "<webPublishObjects", "<extLst"} {
+			if k := strings.Index(wb, next); k >= 0 && k < at {
+				at = k
+			}
+		}
+		if at < 0 {
+			return errNotUnderstood
+		}
+		wb = wb[:at] + `<calcPr fullCalcOnLoad="1"/>` + wb[at:]
+	}
+	w.xml = []byte(wb)
+	w.p.set("xl/workbook.xml", w.xml)
+	return nil
 }
