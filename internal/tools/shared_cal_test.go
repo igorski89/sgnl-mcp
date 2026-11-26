@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"github.com/igorski89/sgnl-mcp/internal/jmap"
 	"strings"
 	"testing"
 
@@ -86,5 +87,28 @@ func TestAvailability(t *testing.T) {
 	}
 	if txt, isErr := callTool(t, cs, "availability_get", map[string]any{"people": []string{"hugo"}, "from": "3 Dec"}); !isErr || !strings.Contains(txt, "YYYY-MM-DDTHH:MM") {
 		t.Errorf("bad from: %s", txt)
+	}
+}
+
+func TestAvailabilityNote(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		f := &fakeCal{events: map[string]map[string]any{}}
+		srv := f.serve(t)
+		s := mcp.NewServer(&mcp.Implementation{Name: "t"}, nil)
+		(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(srv.URL + "/session"), Access: Access{All: true}, TZ: "Europe/Berlin", FreeBusyShared: shared}).Register(s)
+		ct, st := mcp.NewInMemoryTransports()
+		if _, err := s.Connect(context.Background(), st, nil); err != nil {
+			t.Fatal(err)
+		}
+		cs, err := mcp.NewClient(&mcp.Implementation{Name: "c"}, nil).Connect(context.Background(), ct, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		txt, _ := callTool(t, cs, "availability_get", map[string]any{"people": []string{"hugo"}, "from": "2026-12-03"})
+		want := map[bool]string{false: "or that they share no calendar with you", true: "An empty list means free: colleagues share"}[shared]
+		if !strings.Contains(txt, want) {
+			t.Errorf("shared=%v: %s", shared, txt)
+		}
+		cs.Close()
 	}
 }

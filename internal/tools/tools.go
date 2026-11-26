@@ -40,6 +40,9 @@ type Tools struct {
 	TrashDays int
 	// FilesTrashDays: the same for the file app's trash bin (0: none).
 	FilesTrashDays int
+	// FreeBusyShared: the instance shares every colleague's free/busy with
+	// everyone by default, so an empty busy list means free.
+	FreeBusyShared bool
 	// Probes: the instance's other apps (name → an API URL), for aud_check.
 	Probes map[string]string
 	Access Access // who may use the gateway

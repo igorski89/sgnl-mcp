@@ -479,7 +479,10 @@ type AvailabilityOut struct {
 	Note   string               `json:"note"`
 }
 
-const availNote = "Busy times come only from calendars each colleague shares with you (at least free/busy). An empty list means free, or that they share no calendar with you. Never what the meetings are."
+const (
+	availNote       = "Busy times come only from calendars each colleague shares with you (at least free/busy). An empty list means free, or that they share no calendar with you. Never what the meetings are."
+	availNoteShared = "An empty list means free: colleagues share their free/busy with everyone by default (only an account left out of that, e.g. a new one not yet set up, could look free without being so). Never what the meetings are."
+)
 
 var principalUsing = []string{jmap.Core, jmap.Principals, jmap.Availability, jmap.Calendars}
 
@@ -548,6 +551,9 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 		acct = s.PrimaryAccounts[jmap.Mail]
 	}
 	out := AvailabilityOut{From: from.Format("2006-01-02T15:04"), To: to.Format("2006-01-02T15:04"), Zone: t.loc().String(), People: []PersonAvailability{}, Note: availNote}
+	if t.FreeBusyShared {
+		out.Note = availNoteShared
+	}
 	local := func(u string) string {
 		if tm, err := time.Parse(time.RFC3339, u); err == nil {
 			return tm.In(t.loc()).Format("2006-01-02T15:04")

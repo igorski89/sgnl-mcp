@@ -26,6 +26,9 @@
 //	SGNL_MCP_TRASH_DAYS     after how many days the mail server empties Trash (told
 //	                        to the person when mail goes to Trash; unset: not said)
 //	SGNL_MCP_FILES_TRASH_DAYS the same for the file app's trash bin
+//	SGNL_MCP_FREEBUSY_SHARED set (1): every colleague's calendars share free/busy with
+//	                        everyone (an operator sync), so availability_get calls an
+//	                        empty list free; unset: "free, or not shared with you"
 //	SGNL_MCP_CONFIRM_FAST_OK login client ids whose instant "yes" is accepted (an
 //	                        accept under 1.5 s is otherwise refused as the app's own)
 //	SGNL_MCP_CONFIRM_CLIENTS login client ids whose apps may ask the person to confirm
@@ -206,6 +209,7 @@ func main() {
 		}
 		t.FilesTrashDays = n
 	}
+	t.FreeBusyShared = os.Getenv("SGNL_MCP_FREEBUSY_SHARED") != ""
 	t.Probes = map[string]string{}
 	for _, p := range list("SGNL_MCP_PROBES") {
 		if n, u, ok := strings.Cut(p, "="); ok {
