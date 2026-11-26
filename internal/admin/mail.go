@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -218,6 +219,7 @@ type MailAccount struct {
 	Members   []string `json:"members,omitempty" jsonschema:"shared mailboxes: who reads and sends from it"`
 	MemberOf  []string `json:"member_of,omitempty" jsonschema:"people: the shared mailboxes they're in"`
 	QuotaMiB  *float64 `json:"quota_mib,omitempty"`
+	Quota     string   `json:"quota,omitempty"`
 	UsedMiB   *float64 `json:"used_mib,omitempty"`
 	Disabled  bool     `json:"disabled,omitempty"`
 	About     string   `json:"description,omitempty"`
@@ -250,21 +252,38 @@ func (t *Tools) mailAccounts(ctx context.Context) ([]MailAccount, error) {
 		if m.Address == "" && d != "" {
 			m.Address = m.Name + "@" + d
 		}
-		if als, ok := a["aliases"].([]any); ok {
-			for _, x := range als {
-				al, _ := x.(map[string]any)
-				n := str(al, "name")
-				if dn := domains[str(al, "domainId")]; dn != "" && !strings.Contains(n, "@") {
-					n += "@" + dn
-				}
-				if en, ok := al["enable"].(bool); ok && !en {
-					n += " (off)"
-				}
-				m.Aliases = append(m.Aliases, n)
+		// Aliases: a list or (as the server keeps them) a map of objects.
+		var als []any
+		switch x := a["aliases"].(type) {
+		case []any:
+			als = x
+		case map[string]any:
+			for _, k := range slices.Sorted(maps.Keys(x)) {
+				als = append(als, x[k])
 			}
+		}
+		for _, x := range als {
+			al, _ := x.(map[string]any)
+			if en, ok := al["enable"].(bool); ok && !en {
+				continue
+			}
+			n := str(al, "name")
+			if n == "" {
+				continue
+			}
+			if dn := domains[str(al, "domainId")]; !strings.Contains(n, "@") {
+				if dn == "" {
+					dn = d
+				}
+				n += "@" + dn
+			}
+			m.Aliases = append(m.Aliases, n)
 		}
 		if q, ok := a["quotas"].(map[string]any); ok {
 			m.QuotaMiB = mib(q["maxDiskQuota"])
+		}
+		if m.QuotaMiB == nil || *m.QuotaMiB == 0 {
+			m.QuotaMiB, m.Quota = nil, "no limit set"
 		}
 		m.UsedMiB = mib(a["usedDiskQuota"])
 		byID[m.accountID] = m

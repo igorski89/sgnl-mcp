@@ -50,7 +50,7 @@ func fakeStalwart(t *testing.T) (*Stalwart, *[]string) {
 				res = map[string]any{"list": []any{
 					map[string]any{"id": "g1", "@type": "Group", "name": "contact", "domainId": "d1", "quotas": map[string]any{"maxDiskQuota": 1 << 30}, "usedDiskQuota": 5 << 20},
 					map[string]any{"id": "u1", "@type": "User", "name": "igor", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true},
-						"aliases": []any{map[string]any{"name": "postmaster", "domainId": "d1", "enable": true}}},
+						"aliases": map[string]any{"0": map[string]any{"name": "postmaster", "domainId": "d1", "enable": true}, "1": map[string]any{"name": "old", "domainId": "d1", "enable": false}}},
 					map[string]any{"id": "u2", "@type": "User", "name": "hugo", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true}},
 				}}
 			case "x:Domain/get":
@@ -77,7 +77,7 @@ func TestMailAdminReads(t *testing.T) {
 	cs, _ := wsession(t, &Tools{API: read, Mail: m}, nil)
 	txt, isErr := call(t, cs, "mail_mailboxes", nil)
 	if isErr || !strings.Contains(txt, `"members":["hugo","igor"]`) || !strings.Contains(txt, `"address":"contact@co.example"`) ||
-		!strings.Contains(txt, `"aliases":["postmaster@co.example"]`) || !strings.Contains(txt, `"quota_mib":1024`) {
+		!strings.Contains(txt, `"aliases":["postmaster@co.example"]`) || !strings.Contains(txt, `"quota_mib":1024`) || !strings.Contains(txt, `"quota":"no limit set"`) || strings.Contains(txt, "old@") {
 		t.Errorf("mailboxes: %q", txt)
 	}
 	if txt, isErr := call(t, cs, "mail_mailbox", map[string]any{"name": "postmaster@co.example"}); isErr || !strings.Contains(txt, `"member_of":["contact@co.example"]`) {
