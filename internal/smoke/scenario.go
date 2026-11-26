@@ -95,6 +95,18 @@ func contains(field string, subs ...string) func(*Runner, callOut) error {
 
 // Steps: the scenario, in order. Run is the run's id (in every name and
 // subject); people's addresses come from whoami.
+// readBlock: how many steps lead the scenario before its first change.
+// Read-only runs only those: every later read looks for what the run itself
+// made, and would fail or be skipped without it.
+func readBlock(steps []Step) int {
+	for i, s := range steps {
+		if s.Write {
+			return i
+		}
+	}
+	return len(steps)
+}
+
 func Steps() []Step {
 	A, B := "A", "B"
 	return []Step{
@@ -133,7 +145,7 @@ func Steps() []Step {
 		}, Check: set("a_draft", "id")},
 		{Name: "update draft", Who: A, Tool: "mail_draft_update", Write: true, Needs: []string{"a_draft"}, Args: func(r *Runner) map[string]any {
 			return map[string]any{"id": r.v("a_draft"), "body": "Smoke test " + r.run + ", updated."}
-		}},
+		}, Check: set("a_draft", "id")}, // an updated draft is a new message with a new id
 		{Name: "send A→B", Who: A, Tool: "mail_send", Write: true, Needs: []string{"a_draft"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_draft")} },
 			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run, r.people.B}} }},
 		{Name: "B finds it", Who: B, Tool: "mail_search", Poll: 90 * time.Second, Args: func(r *Runner) map[string]any { return map[string]any{"query": r.run} },
@@ -532,11 +544,12 @@ func Run(ctx context.Context, cfg Config) (*Runner, error) {
 	if sweep {
 		r.sweep(ctx, "sweep (leftovers)")
 	}
-	for _, s := range Steps() {
+	steps := Steps()
+	if cfg.ReadOnly {
+		steps = steps[:readBlock(steps)]
+	}
+	for _, s := range steps {
 		if len(cfg.Only) > 0 && !slices.Contains(cfg.Only, s.Tool) {
-			continue
-		}
-		if cfg.ReadOnly && s.Write {
 			continue
 		}
 		if !offered[s.Tool] {

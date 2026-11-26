@@ -155,6 +155,20 @@ func TestStepsCoverTheMatrix(t *testing.T) {
 	}
 }
 
+// Read-only runs only the leading reads: none needs the run's own items.
+func TestReadBlock(t *testing.T) {
+	steps := Steps()
+	n := readBlock(steps)
+	if n < 10 || n == len(steps) {
+		t.Fatalf("read block of %d steps", n)
+	}
+	for _, s := range steps[:n] {
+		if s.Write || len(s.Needs) > 0 || s.Poll > 0 {
+			t.Errorf("%q in the read block depends on the run's writes", s.Name)
+		}
+	}
+}
+
 // ---- a run against a small gateway: the guard and the answers
 
 func fakeGateway(t *testing.T, users map[string]string) string {

@@ -93,7 +93,9 @@ func (r *Runner) sweep(ctx context.Context, label string) {
 		}
 		// Events from yesterday to six weeks ahead.
 		for _, ev := range glist(read(who, "event_list", map[string]any{"from": r.day(-1), "to": r.day(42)}), "events") {
-			if strings.Contains(gstr(ev, "title"), tag) {
+			// A cancelled one is the attendee's copy of a meeting already
+			// called off: only the organizer can cancel, and it's done.
+			if strings.Contains(gstr(ev, "title"), tag) && gstr(ev, "status") != "cancelled" {
 				a := map[string]any{"id": gstr(ev, "id")}
 				sw(who, "event_cancel", a, p.user+": event "+gstr(ev, "title"), ifAsk)
 			}
@@ -124,7 +126,17 @@ func (r *Runner) sweep(ctx context.Context, label string) {
 			}
 		}
 		// Files: the top of the personal space, listed (search may lag).
-		for _, f := range glist(read(who, "folder_list", map[string]any{"path": "/"}), "files") {
+		home := ""
+		if r.offer["folder_list"] {
+			if home = personal(read(who, "folder_list", nil)); home == "" {
+				r.add(label+": look", "folder_list", "failed", 0, p.user+": no personal space among the spaces")
+			}
+		}
+		var files []map[string]any
+		if home != "" {
+			files = glist(read(who, "folder_list", map[string]any{"path": home}), "files")
+		}
+		for _, f := range files {
 			if strings.HasPrefix(gstr(f, "name"), tag) {
 				sw(who, "file_trash", map[string]any{"path": gstr(f, "path")}, p.user+": file "+gstr(f, "name"), Expect{Dialog: Accept})
 			}
@@ -151,7 +163,15 @@ func (r *Runner) leftovers(ctx context.Context) {
 	}
 	for _, who := range []string{"A", "B"} {
 		u := r.p[who].user
-		for _, f := range glist(look(who, "folder_list", map[string]any{"path": "/"}), "files") {
+		var files []map[string]any
+		if r.offer["folder_list"] {
+			if home := personal(look(who, "folder_list", nil)); home == "" {
+				left = append(left, u+": no personal space in folder_list")
+			} else {
+				files = glist(look(who, "folder_list", map[string]any{"path": home}), "files")
+			}
+		}
+		for _, f := range files {
 			if strings.HasPrefix(gstr(f, "name"), tag) {
 				left = append(left, u+": file "+gstr(f, "name"))
 			}
@@ -202,4 +222,14 @@ func hasName(items []map[string]any, name string) bool {
 		}
 	}
 	return false
+}
+
+// personal: the path of the person's own space, from folder_list's spaces.
+func personal(out map[string]any) string {
+	for _, sp := range glist(out, "spaces") {
+		if gstr(sp, "type") == "personal" {
+			return gstr(sp, "path")
+		}
+	}
+	return ""
 }
