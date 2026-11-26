@@ -87,6 +87,11 @@ func (t *Tools) fileOfficeEdit(ctx context.Context, req *mcp.CallToolRequest, in
 		return nil, FileOfficeEditOut{}, err
 	}
 
+	// The recalculation note is said once, not counted as a change.
+	note := ""
+	if n := len(lines); n > 0 && lines[n-1] == office.RecalcNote {
+		note, lines = lines[n-1], lines[:n-1]
+	}
 	me, _ := auth.Person(ctx)
 	shown := shownPath(sp, p)
 	shared := sp.Type != "personal"
@@ -110,6 +115,9 @@ func (t *Tools) fileOfficeEdit(ctx context.Context, req *mcp.CallToolRequest, in
 			break
 		}
 		fmt.Fprintf(&b, "%d. %s\n", i+1, oneLine(l, 300))
+	}
+	if note != "" {
+		b.WriteString(note + ".\n")
 	}
 	b.WriteString("Everything else in the file stays as it is; the previous version is kept.\n")
 	if t.outside.recent(me.Username) {

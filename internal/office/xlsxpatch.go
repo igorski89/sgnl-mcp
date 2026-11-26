@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+// RecalcNote: the line EditXlsx adds (not a change of its own) when
+// formula results were dropped to be worked out again.
+const RecalcNote = "Formula results are worked out again when the file is next opened in an office app (until then they show empty here)"
+
 // XlsxEdit: one change to a workbook.
 type XlsxEdit struct {
 	Sheet      string         `json:"sheet,omitempty" jsonschema:"the sheet to change (its name); not with add_sheet"`
@@ -559,7 +563,7 @@ func EditXlsx(data []byte, edits []XlsxEdit) ([]byte, []string, error) {
 			if err := w.fullCalcOnLoad(); err != nil {
 				return nil, nil, fmt.Errorf("this workbook's settings have a form the editor doesn't handle")
 			}
-			lines = append(lines, "Formula results are worked out again when the file is next opened in an office app (until then they show empty here)")
+			lines = append(lines, RecalcNote)
 		}
 	}
 	for _, e := range edits {

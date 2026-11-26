@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -146,4 +149,44 @@ func TestFileOfficeEdit(t *testing.T) {
 	if len(asked) != n {
 		t.Error("asked for a refused edit")
 	}
+}
+
+func TestOfficeEditRecalcNoteNotAChange(t *testing.T) {
+	f := newDrive()
+	x, _ := office.Xlsx([]office.Sheet{{Name: "S", Rows: [][]any{{1.0}, {2.0}}}})
+	p := "/remote.php/dav/spaces/p/f.xlsx"
+	f.set(p, string(withFormula(t, x)))
+	var asked []string
+	cs := editSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = append(asked, r.Params.Message)
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
+	})
+	if txt, isErr := callTool(t, cs, "file_office_edit", map[string]any{"path": "/f.xlsx", "changes": []any{map[string]any{"sheet": "S", "set_cells": map[string]any{"A1": 5}}}}); isErr {
+		t.Fatal(txt)
+	}
+	q := asked[0]
+	if !strings.HasPrefix(q, `Change "f.xlsx": Sheet "S", A1: 1 → 5?`) || strings.Contains(q, "more change") || !strings.Contains(q, office.RecalcNote) {
+		t.Errorf("question: %q", q)
+	}
+}
+
+// withFormula: the workbook with =SUM(A1:A2) in A3 (cached 3).
+func withFormula(t *testing.T, x []byte) []byte {
+	zr, err := zip.NewReader(bytes.NewReader(x), int64(len(x)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		b, _ := io.ReadAll(rc)
+		if f.Name == "xl/worksheets/sheet1.xml" {
+			b = bytes.Replace(b, []byte("</sheetData>"), []byte(`<row r="3"><c r="A3"><f>SUM(A1:A2)</f><v>3</v></c></row></sheetData>`), 1)
+		}
+		w, _ := zw.Create(f.Name)
+		w.Write(b)
+	}
+	zw.Close()
+	return buf.Bytes()
 }
