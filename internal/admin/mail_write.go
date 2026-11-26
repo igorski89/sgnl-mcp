@@ -12,7 +12,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
+	"github.com/igorski89/sgnl-mcp/internal/textx"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -256,7 +258,16 @@ func (t *Tools) setAccount(ctx context.Context, id string, patch map[string]any)
 		}
 		if nu, ok := r[0]["notUpdated"].(map[string]any); ok {
 			if e, ok := nu[id].(map[string]any); ok {
-				return fmt.Errorf("the mail server refused the change: %s %s", str(e, "type"), str(e, "description"))
+				d, _ := e["description"].(string)
+				if r := []rune(textx.StripHidden(d)); len(r) > 400 {
+					d = string(r[:400]) + "…"
+				}
+				return fmt.Errorf("the mail server refused the change: %s %s", str(e, "type"), strings.Map(func(r rune) rune {
+					if unicode.IsControl(r) {
+						return ' '
+					}
+					return r
+				}, d))
 			}
 		}
 	}
