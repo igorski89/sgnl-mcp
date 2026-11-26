@@ -3,11 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/igorski89/sgnl-mcp/internal/jmap"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,6 +23,7 @@ type fakeCal struct {
 	events      map[string]map[string]any
 	mails       []any          // Email/get answer
 	parsed      map[string]any // CalendarEvent/parse answer
+	queries     int            // CalendarEvent/query calls
 }
 
 func (f *fakeCal) serve(t *testing.T) *httptest.Server {
@@ -34,6 +38,7 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		var out [][]any
+		var lastIDs []any
 		for _, mc := range req.MethodCalls {
 			var name, id string
 			var args map[string]any
@@ -42,14 +47,52 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 			_ = json.Unmarshal(mc[2], &id)
 			var res any
 			switch name {
+			case "CalendarEvent/query":
+				// As Stalwart 1.1: a window finds an event only by its first
+				// start; expandRecurrences is ignored.
+				f.queries++
+				ids := []any{}
+				flt, _ := args["filter"].(map[string]any)
+				for _, k := range slices.Sorted(maps.Keys(f.events)) {
+					st, _ := f.events[k]["start"].(string)
+					tz, _ := f.events[k]["timeZone"].(string)
+					if tz == "" {
+						tz = "Europe/Berlin"
+					}
+					loc, _ := time.LoadLocation(tz)
+					at, _ := time.ParseInLocation("2006-01-02T15:04:05", st, loc)
+					if a, ok := flt["after"].(string); ok {
+						if t0, _ := time.Parse(time.RFC3339, a); at.Before(t0) {
+							continue
+						}
+					}
+					if b, ok := flt["before"].(string); ok {
+						if t1, _ := time.Parse(time.RFC3339, b); !at.Before(t1) {
+							continue
+						}
+					}
+					ids = append(ids, k)
+				}
+				lastIDs = ids
+				res = map[string]any{"ids": ids}
 			case "CalendarEvent/get":
 				list := []any{}
-				for _, id := range args["ids"].([]any) {
+				ids, _ := args["ids"].([]any)
+				if _, ok := args["#ids"]; ok {
+					ids = lastIDs
+				}
+				for _, id := range ids {
 					if e, ok := f.events[id.(string)]; ok {
+						if _, ok := args["properties"]; ok {
+							// As Stalwart: a properties list drops the rules.
+							e = maps.Clone(e)
+							delete(e, "recurrenceRules")
+							delete(e, "recurrenceOverrides")
+						}
 						list = append(list, e)
 					}
 				}
-				res = map[string]any{"list": list}
+				res = map[string]any{"list": list, "state": "s1"}
 			case "Email/get":
 				res = map[string]any{"list": f.mails}
 			case "CalendarEvent/parse":

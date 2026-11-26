@@ -35,7 +35,7 @@ groups, the server's health).
 | `out_of_office_get` | mail (JMAP) | the automatic reply: on/off, dates, text |
 | `out_of_office_set` | mail (JMAP) | switch it on (**only after the person confirms** dates and whole text; plain text) or off |
 | `mail_send` | mail (JMAP) | send a draft, **only after the person confirms** |
-| `event_list` | calendar (JMAP) | events in a date range |
+| `event_list` | calendar (JMAP) | events in a date range; each meeting of a repeating series on its own day (the gateway expands series itself: the mail server's query finds a series only by its first day) |
 | `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
 | `event_create` | calendar (JMAP) | a private event, no participants |
 | `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |

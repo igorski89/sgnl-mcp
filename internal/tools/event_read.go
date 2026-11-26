@@ -59,6 +59,7 @@ type calEvent struct {
 	Organizer       string                                `json:"organizerCalendarAddress"`
 	Participants    map[string]calParticipant             `json:"participants"`
 	RecurrenceRules []any                                 `json:"recurrenceRules"`
+	ExRules         []any                                 `json:"excludedRecurrenceRules"`
 	RecurrenceID    string                                `json:"recurrenceId"`
 	BaseEventID     string                                `json:"baseEventId"`
 	CalendarIDs     map[string]bool                       `json:"calendarIds"`
@@ -85,7 +86,7 @@ func (p calParticipant) address() string {
 }
 
 func (e calEvent) repeats() bool {
-	return len(e.RecurrenceRules) > 0 || e.RecurrenceID != "" || e.BaseEventID != "" || len(e.RecurrenceOver) > 0
+	return len(e.RecurrenceRules) > 0 || e.RecurrenceID != "" || e.BaseEventID != "" || len(e.RecurrenceOver) > 0 || len(e.ExRules) > 0
 }
 
 // role: how the person stands to the event, and their own participant id.

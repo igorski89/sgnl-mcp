@@ -47,6 +47,7 @@ type Tools struct {
 	InternalDomains []string
 	limits          limiter
 	outside         seen
+	series          seriesCache
 }
 
 // Register adds every tool to s. Each call is logged: who, which tool,
@@ -101,7 +102,7 @@ func (t *Tools) Register(s *mcp.Server) {
 
 	// Calendar
 	add(t, s, &mcp.Tool{Name: "event_list", Annotations: ro,
-		Description: "Your calendar events in a date range (default: the next 7 days)."}, t.eventList)
+		Description: "Your calendar events in a date range (default: the next 7 days). Each meeting of a repeating series is listed on its own day (repeats, occurrence)."}, t.eventList)
 	add(t, s, &mcp.Tool{Name: "event_read", Annotations: ro,
 		Description: "One event in full: time, place, description, organizer, the attendees and their answers (accepted, declined, …), and whether you are organizer or attendee and what you answered. " + untrustedEvent}, t.eventRead)
 	add(t, s, &mcp.Tool{Name: "event_create", Annotations: wr,

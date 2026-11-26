@@ -31,6 +31,11 @@ type Event struct {
 	Location string `json:"location,omitempty"`
 	Calendar string `json:"calendar,omitempty"`
 	Status   string `json:"status,omitempty" jsonschema:"cancelled: the organizer called it off; tentative"`
+	Repeats  bool   `json:"repeats,omitempty" jsonschema:"one meeting of a repeating series (id is the series)"`
+	// Occurrence: which meeting of the series (its original start); pass
+	// it with the id to change or cancel just this one.
+	Occurrence string `json:"occurrence,omitempty" jsonschema:"which meeting of the series (its original start), for changing just this one"`
+	Note       string `json:"note,omitempty"`
 }
 
 type EventListOut struct {
@@ -71,9 +76,9 @@ func (t *Tools) events(ctx context.Context, from, to time.Time) ([]Event, error)
 	r, err := t.JMAP.Invoke(ctx, tok, s, calUsing,
 		jmap.Call{Method: "Calendar/get", Args: map[string]any{"accountId": acct, "properties": []string{"id", "name"}}},
 		jmap.Call{Method: "CalendarEvent/query", Args: map[string]any{"accountId": acct,
-			"filter":            map[string]any{"after": from.UTC().Format(time.RFC3339), "before": to.UTC().Format(time.RFC3339)},
-			"sort":              []any{map[string]any{"property": "start", "isAscending": true}},
-			"expandRecurrences": true, "limit": 200}},
+			"filter": map[string]any{"after": from.UTC().Format(time.RFC3339), "before": to.UTC().Format(time.RFC3339)},
+			"sort":   []any{map[string]any{"property": "start", "isAscending": true}},
+			"limit":  200}},
 		jmap.Call{Method: "CalendarEvent/get", Args: map[string]any{"accountId": acct,
 			"#ids":       jmap.Ref(1, "CalendarEvent/query", "/ids"),
 			"properties": []string{"id", "title", "start", "timeZone", "duration", "showWithoutTime", "locations", "calendarIds", "status"}}})
@@ -89,38 +94,118 @@ func (t *Tools) events(ctx context.Context, from, to time.Time) ([]Event, error)
 		names[c.ID] = c.Name
 	}
 	var got struct {
-		List []struct {
-			ID              string                           `json:"id"`
-			Title           string                           `json:"title"`
-			Start           string                           `json:"start"`
-			TimeZone        string                           `json:"timeZone"`
-			Duration        string                           `json:"duration"`
-			ShowWithoutTime bool                             `json:"showWithoutTime"`
-			Locations       map[string]struct{ Name string } `json:"locations"`
-			CalendarIDs     map[string]bool                  `json:"calendarIds"`
-			Status          string                           `json:"status"`
-		} `json:"list"`
+		State string     `json:"state"`
+		List  []calEvent `json:"list"`
 	}
 	if err := json.Unmarshal(r[2], &got); err != nil {
 		return nil, err
 	}
+	series, truncated, err := t.seriesOf(ctx, tok, s, acct, got.State)
+	if err != nil {
+		return nil, err
+	}
+	isSeries := map[string]bool{}
+	for _, e := range series {
+		isSeries[e.ID] = true
+	}
+	calName := func(ids map[string]bool) string {
+		for _, id := range slices.Sorted(maps.Keys(ids)) {
+			return names[id]
+		}
+		return ""
+	}
 	out := []Event{}
 	for _, e := range got.List {
-		ev := Event{ID: e.ID, Title: e.Title, Start: e.Start, TimeZone: e.TimeZone, Duration: e.Duration, AllDay: e.ShowWithoutTime}
+		if isSeries[e.ID] {
+			continue // listed below, occurrence by occurrence
+		}
+		ev := Event{ID: e.ID, Title: e.Title, Start: e.Start, TimeZone: e.TimeZone, Duration: e.Duration, AllDay: e.ShowWithoutTime,
+			Location: locNames(e.Locations), Calendar: calName(e.CalendarIDs)}
 		if e.Status != "" && e.Status != "confirmed" {
 			ev.Status = e.Status
 		}
-		for _, l := range e.Locations {
-			ev.Location = l.Name
-			break
-		}
-		for id := range e.CalendarIDs {
-			ev.Calendar = names[id]
-			break
-		}
 		out = append(out, ev)
 	}
+	for _, e := range series {
+		occ, err := t.occurrences(e, from, to)
+		if err != nil {
+			// Not guessed: the series is listed once, as it starts, marked.
+			if st, _, werr := t.window(e); werr == nil && st.Before(to) {
+				out = append(out, Event{ID: e.ID, Title: e.Title, Start: e.Start, TimeZone: e.TimeZone, Duration: e.Duration, AllDay: e.ShowWithoutTime,
+					Location: locNames(e.Locations), Calendar: calName(e.CalendarIDs), Repeats: true,
+					Note: "repeats in a way not followed here: see your calendar app for its dates"})
+			}
+			continue
+		}
+		for _, o := range occ {
+			ev := Event{ID: e.ID, Occurrence: o.RecurrenceID, Repeats: true, Title: o.Title, Start: o.Start.Format(localFmt), TimeZone: e.TimeZone,
+				Duration: o.Duration, AllDay: e.ShowWithoutTime, Location: locNames(o.Locations), Calendar: calName(e.CalendarIDs)}
+			if o.Status != "" && o.Status != "confirmed" {
+				ev.Status = o.Status
+			}
+			if o.Moved {
+				ev.Note = "moved from " + o.RecurrenceID
+			}
+			out = append(out, ev)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b Event) int { return strings.Compare(a.sortKey(t), b.sortKey(t)) })
+	if truncated {
+		slog.Warn("calendar: too many events to find every repeating one", "account", acct)
+	}
 	return out, nil
+}
+
+// sortKey: the start in UTC, so events in different zones sort right.
+func (e Event) sortKey(t *Tools) string {
+	st, _, err := t.window(calEvent{Start: e.Start, TimeZone: e.TimeZone})
+	if err != nil {
+		return e.Start
+	}
+	return st.UTC().Format(time.RFC3339)
+}
+
+// maxEvents: how many of a person's events are looked through for series.
+const maxEvents = 3000
+
+// seriesOf: the person's repeating events (whole objects), from the cache
+// while the calendar state is unchanged.
+func (t *Tools) seriesOf(ctx context.Context, tok string, s *jmap.Session, acct, state string) ([]calEvent, bool, error) {
+	if c, ok := t.series.get(acct, state); ok {
+		return c.series, c.truncated, nil
+	}
+	r, err := t.JMAP.Invoke(ctx, tok, s, calUsing, jmap.Call{Method: "CalendarEvent/query", Args: map[string]any{"accountId": acct, "limit": maxEvents}})
+	if err != nil {
+		return nil, false, err
+	}
+	var q struct {
+		IDs   []string `json:"ids"`
+		Total int      `json:"total"`
+	}
+	_ = json.Unmarshal(r[0], &q)
+	entry := seriesEntry{state: state, truncated: len(q.IDs) >= maxEvents}
+	for i := 0; i < len(q.IDs); i += 250 {
+		batch := q.IDs[i:min(i+250, len(q.IDs))]
+		// Whole objects: with a properties list the server leaves the rules out.
+		r, err := t.JMAP.Invoke(ctx, tok, s, calUsing, jmap.Call{Method: "CalendarEvent/get", Args: map[string]any{"accountId": acct, "ids": batch}})
+		if err != nil {
+			return nil, false, err
+		}
+		var got struct {
+			List []calEvent `json:"list"`
+		}
+		if err := json.Unmarshal(r[0], &got); err != nil {
+			return nil, false, err
+		}
+		for _, e := range got.List {
+			if e.repeats() {
+				e.Description, e.Participants, e.Alerts, e.Links, e.Replies, e.VirtualLocs = "", nil, nil, nil, nil, nil
+				entry.series = append(entry.series, e)
+			}
+		}
+	}
+	t.series.put(acct, entry)
+	return entry.series, entry.truncated, nil
 }
 
 func (t *Tools) eventList(ctx context.Context, _ *mcp.CallToolRequest, in EventListIn) (*mcp.CallToolResult, EventListOut, error) {
