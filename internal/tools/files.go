@@ -23,30 +23,57 @@ const (
 // ---- file_search
 
 type FileSearchIn struct {
-	Query string `json:"query" jsonschema:"part of the file or folder name"`
+	Query   string `json:"query,omitempty" jsonschema:"part of the file or folder name"`
+	Content string `json:"content,omitempty" jsonschema:"words inside the files (all of them must be there), e.g. invoice ACME"`
 	Limit int    `json:"limit,omitempty" jsonschema:"how many results, 1-50 (default 20)"`
 }
 
 type FileListOut struct {
 	Files []opencloud.File `json:"files"`
+	Note  string           `json:"note,omitempty"`
 }
 
+// contentNote: what a content match means. The server's index also holds
+// text a reader doesn't see (hidden sheets, rows, slides), so no match
+// excerpts are passed on: file_read shows what is visible.
+const contentNote = "Matched by words inside the files, as the file app indexed them; the match may be in parts file_read leaves out (hidden sheets, rows, slides). Read a file with file_read."
+
 func (t *Tools) fileSearch(ctx context.Context, _ *mcp.CallToolRequest, in FileSearchIn) (*mcp.CallToolResult, FileListOut, error) {
-	if strings.TrimSpace(in.Query) == "" {
-		return nil, FileListOut{}, fmt.Errorf("query is required")
+	q, c := strings.TrimSpace(in.Query), strings.TrimSpace(in.Content)
+	if q == "" && c == "" {
+		return nil, FileListOut{}, fmt.Errorf("give query (a name) and/or content (words inside)")
 	}
 	if in.Limit < 1 || in.Limit > 50 {
 		in.Limit = 20
+	}
+	var kql []string
+	if q != "" {
+		kql = append(kql, opencloud.NameKQL(q))
+	}
+	if c != "" {
+		ck := opencloud.ContentKQL(c)
+		if ck == "" {
+			return nil, FileListOut{}, fmt.Errorf("content: give words (letters and digits)")
+		}
+		kql = append(kql, ck)
 	}
 	tok, err := t.Auth.FilesToken(ctx)
 	if err != nil {
 		return nil, FileListOut{}, err
 	}
-	files, err := t.Files.Search(ctx, tok, in.Query, in.Limit)
+	files, err := t.Files.SearchKQL(ctx, tok, strings.Join(kql, " AND "), in.Limit)
 	if err != nil {
 		return nil, FileListOut{}, err
 	}
-	return nil, FileListOut{Files: files}, nil
+	out := FileListOut{Files: files}
+	if c != "" {
+		out.Note = contentNote
+	} else {
+		for i := range out.Files {
+			out.Files[i].Score = "" // only meaningful for content
+		}
+	}
+	return nil, out, nil
 }
 
 // ---- file_read

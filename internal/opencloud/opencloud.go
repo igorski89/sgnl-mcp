@@ -6,6 +6,7 @@
 package opencloud
 
 import (
+	"unicode"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -78,6 +79,7 @@ type File struct {
 	Size     int64  `json:"size"`
 	Modified string `json:"modified"`
 	Folder   bool   `json:"folder,omitempty"`
+	Score    string `json:"score,omitempty" jsonschema:"how well it matched a content search (higher is better)"`
 }
 
 type multistatus struct {
@@ -91,6 +93,7 @@ type multistatus struct {
 				Length       string `xml:"getcontentlength"`
 				Size         string `xml:"size"`
 				LastModified string `xml:"getlastmodified"`
+				Score        string `xml:"score"`
 				ResourceType struct {
 					Collection *struct{} `xml:"collection"`
 				} `xml:"resourcetype"`
@@ -102,15 +105,38 @@ type multistatus struct {
 // Search: files whose name (or indexed content) matches query, across
 // every space the person can see.
 func (c *Client) Search(ctx context.Context, token, query string, limit int) ([]File, error) {
-	q := strings.ReplaceAll(query, `"`, ``)
-	return c.SearchKQL(ctx, token, `name:"*`+q+`*"`, limit)
+	return c.SearchKQL(ctx, token, NameKQL(query), limit)
+}
+
+// NameKQL: names containing q.
+func NameKQL(q string) string {
+	return `name:"*` + strings.ReplaceAll(q, `"`, ``) + `*"`
+}
+
+// ContentKQL: files whose text (as the server's extractor reads it)
+// has every word of q. Only letters, digits and a few joiners stay, so
+// the words can't change the query.
+func ContentKQL(q string) string {
+	var parts []string
+	for _, w := range strings.Fields(q) {
+		w = strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == '@' {
+				return r
+			}
+			return -1
+		}, w)
+		if w != "" && len(parts) < 10 {
+			parts = append(parts, `content:"`+w+`"`)
+		}
+	}
+	return strings.Join(parts, " AND ")
 }
 
 // SearchKQL: OpenCloud's search with a KQL pattern (e.g. mtime:today).
 func (c *Client) SearchKQL(ctx context.Context, token, kql string, limit int) ([]File, error) {
 	body := `<?xml version="1.0"?>
 <oc:search-files xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
-  <d:prop><oc:name/><d:getcontenttype/><d:getcontentlength/><oc:size/><d:getlastmodified/><d:resourcetype/></d:prop>
+  <d:prop><oc:name/><d:getcontenttype/><d:getcontentlength/><oc:size/><d:getlastmodified/><d:resourcetype/><oc:score/></d:prop>
   <oc:search><oc:pattern>` + xmlEscape(kql) + `</oc:pattern><oc:limit>` + strconv.Itoa(limit) + `</oc:limit></oc:search>
 </oc:search-files>`
 	resp, err := c.do(ctx, token, "REPORT", davPrefix, strings.NewReader(body), map[string]string{"Content-Type": "application/xml"})
@@ -138,7 +164,7 @@ func parse(b []byte) ([]File, error) {
 				continue
 			}
 			p := ps.Prop
-			f.Name, f.Type, f.Modified = p.Name, p.ContentType, p.LastModified
+			f.Name, f.Type, f.Modified, f.Score = p.Name, p.ContentType, p.LastModified, p.Score
 			f.Folder = p.ResourceType.Collection != nil
 			if n, err := strconv.ParseInt(firstNonEmpty(p.Length, p.Size), 10, 64); err == nil {
 				f.Size = n
