@@ -63,7 +63,7 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(t, s, &mcp.Tool{Name: "ops_host", Annotations: ro,
 			Description: "The server: disk, memory and CPU now and their worst in 24 h, a 24 h disk forecast, load, out-of-memory kills, up since."}, t.host)
 		add(t, s, &mcp.Tool{Name: "ops_apps", Annotations: ro,
-			Description: "Every app container: running, deployed version, started when (≈ last deploy), restarts in 24 h, memory against its limit."}, t.appsStatus)
+			Description: "Every app container: the deploy version, started when (≈ last deploy), restarts in 24 h, memory against its limit."}, t.appsStatus)
 		add(t, s, &mcp.Tool{Name: "ops_backups", Annotations: ro,
 			Description: "Backups: per job the last successful run and its age, whether the last run is unfinished (failed or still running); the last successful restore drill."}, t.backups)
 	}

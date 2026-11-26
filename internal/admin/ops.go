@@ -301,8 +301,7 @@ type App struct {
 	Container   string   `json:"container"`
 	Service     string   `json:"service,omitempty"`
 	Role        string   `json:"role,omitempty"`
-	Version     string   `json:"version,omitempty" jsonschema:"from the container name (what was deployed)"`
-	Running     bool     `json:"running" jsonschema:"seen in the last 2 minutes"`
+	Deploy      string   `json:"deploy,omitempty" jsonschema:"the deploy's version (from the container name)"`
 	StartedAt   string   `json:"started_at,omitempty" jsonschema:"≈ its last deploy or restart"`
 	Restarts24h *float64 `json:"restarts_24h,omitempty"`
 	MemoryMiB   *float64 `json:"memory_mib,omitempty"`
@@ -313,6 +312,10 @@ type AppsOut struct {
 	Apps []App  `json:"apps"`
 	Note string `json:"note"`
 }
+
+// staleAfter: seconds without a scrape after which a container is gone
+// (cAdvisor is scraped every 30 s).
+const staleAfter = 90
 
 func (t *Tools) appsStatus(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, AppsOut, error) {
 	g := t.Grafana
@@ -325,6 +328,10 @@ func (t *Tools) appsStatus(ctx context.Context, _ *mcp.CallToolRequest, _ struct
 		`changes(container_start_time_seconds{job="cadvisor",name!=""}[24h])`,
 		`container_memory_working_set_bytes{job="cadvisor",name!=""}`,
 		`container_memory_working_set_bytes{job="cadvisor",name!=""} / (container_spec_memory_limit_bytes{job="cadvisor",name!=""} > 0)`,
+		// When each series was last scraped (VictoriaMetrics: the last raw
+		// sample's time): a container replaced by a
+		// deploy stays in an instant query for a few minutes.
+		`tlast_over_time(container_start_time_seconds{job="cadvisor",name!=""}[10m])`,
 	}
 	rs := make([]res, len(qs))
 	var wg sync.WaitGroup
@@ -342,15 +349,20 @@ func (t *Tools) appsStatus(ctx context.Context, _ *mcp.CallToolRequest, _ struct
 			return nil, AppsOut{}, r.err
 		}
 	}
-	now := float64(time.Now().Unix())
+	seen := map[string]float64{}
+	for _, s := range rs[4].s {
+		seen[s.Labels["name"]] = s.Value
+	}
 	apps := map[string]*App{}
 	for _, s := range rs[0].s {
 		n := s.Labels["name"]
-		a := &App{Container: n, Service: s.Labels["container_service"], Role: s.Labels["container_role"],
-			Running: now-s.At < 120, StartedAt: when(s.Value)}
+		if s.At-seen[n] > staleAfter {
+			continue // gone: not scraped in the last 90 s
+		}
+		a := &App{Container: n, Service: s.Labels["container_service"], Role: s.Labels["container_role"], StartedAt: when(s.Value)}
 		if a.Service != "" && a.Role != "" {
 			if v, ok := strings.CutPrefix(n, a.Service+"-"+a.Role+"-"); ok {
-				a.Version = v
+				a.Deploy = v
 			}
 		}
 		apps[n] = a
@@ -372,7 +384,7 @@ func (t *Tools) appsStatus(ctx context.Context, _ *mcp.CallToolRequest, _ struct
 			a.MemoryPct = pct(&s.Value)
 		}
 	}
-	out := AppsOut{Apps: []App{}, Note: "Every container on the server (apps and monitoring). Restarts count starts of the same container in 24 h; a deploy makes a new container."}
+	out := AppsOut{Apps: []App{}, Note: "Every container running on the server now (apps and monitoring). Restarts count starts of the same container in 24 h; a deploy makes a new container."}
 	for _, a := range apps {
 		out.Apps = append(out.Apps, *a)
 	}

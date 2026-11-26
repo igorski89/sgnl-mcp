@@ -28,14 +28,16 @@ func fakeGrafana(t *testing.T) (*Grafana, *[]string) {
 	val := func(labels map[string]string, v float64) map[string]any {
 		return map[string]any{"metric": labels, "value": []any{now, fmt.Sprint(v)}}
 	}
-	mcp := map[string]string{"name": "sgnl-mcp-web-v0.1.11", "container_service": "sgnl-mcp", "container_role": "web"}
+	mcp := map[string]string{"name": "sgnl-mcp-web-f31f7ed", "container_service": "sgnl-mcp", "container_role": "web"}
+	old := map[string]string{"name": "sgnl-mcp-web-238e9a9", "container_service": "sgnl-mcp", "container_role": "web"}
 	results := map[string]map[string]any{
 		diskUsed:                                 vec(val(nil, 0.4567)),
 		`node_memory_MemTotal_bytes{job="node"}`: vec(val(nil, 8<<30)),
-		`container_start_time_seconds{job="cadvisor",name!=""}`:               vec(val(mcp, now-3600)),
-		`changes(container_start_time_seconds{job="cadvisor",name!=""}[24h])`: vec(val(mcp, 2)),
-		`sgnl_backup_last_success_timestamp_seconds`:                          vec(val(map[string]string{"job": "node", "exported_job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-90000)),
-		`sgnl_backup_last_run_timestamp_seconds`:                              vec(val(map[string]string{"job": "node", "exported_job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-3600)),
+		`container_start_time_seconds{job="cadvisor",name!=""}`:                       vec(val(mcp, now-3600), val(old, now-7200)),
+		`tlast_over_time(container_start_time_seconds{job="cadvisor",name!=""}[10m])`: vec(val(mcp, now-20), val(old, now-200)),
+		`changes(container_start_time_seconds{job="cadvisor",name!=""}[24h])`:         vec(val(mcp, 2)),
+		`sgnl_backup_last_success_timestamp_seconds`:                                  vec(val(map[string]string{"job": "node", "exported_job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-90000)),
+		`sgnl_backup_last_run_timestamp_seconds`:                                      vec(val(map[string]string{"job": "node", "exported_job": "mail"}, now-7200), val(map[string]string{"job": "files"}, now-3600)),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +86,7 @@ func TestOps(t *testing.T) {
 		t.Errorf("host: %q", txt)
 	}
 	txt, isErr = call(t, cs, "ops_apps", nil)
-	if isErr || !strings.Contains(txt, `"version":"v0.1.11"`) || !strings.Contains(txt, `"running":true`) || !strings.Contains(txt, `"restarts_24h":2`) {
+	if isErr || !strings.Contains(txt, `"deploy":"f31f7ed"`) || strings.Contains(txt, "238e9a9") || !strings.Contains(txt, `"restarts_24h":2`) {
 		t.Errorf("apps: %q", txt)
 	}
 	txt, isErr = call(t, cs, "ops_backups", nil)

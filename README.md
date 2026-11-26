@@ -94,7 +94,7 @@ Operations, read-only, also on the admin endpoint:
 |---|---|
 | `ops_alerts` | alerts firing now (most severe first), silenced ones after |
 | `ops_host` | disk, memory, CPU now and their worst in 24 h, 24 h disk forecast, load, OOM kills, up since |
-| `ops_apps` | per container: running, version (from its name), started at, restarts in 24 h, memory against its limit |
+| `ops_apps` | per running container: deploy version (from its name), started at, restarts in 24 h, memory against its limit |
 | `ops_backups` | per backup job the last success and its age, whether the last run failed; the last restore drill |
 | `ops_certs` | certificate expiry of `SGNL_MCP_CERT_HOSTS` (a TLS handshake, as any visitor) |
 
