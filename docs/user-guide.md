@@ -104,6 +104,18 @@ Attachments are saved as new files, by default in your personal space.
 
 If you're a member of a shared mailbox (for example contact@ or admin@), the assistant can read it, draft there and, after your confirmation, send from it. The confirmation then starts with "Send AS contact@…", because the mail goes out in the team's name and your colleagues in that mailbox see it in Sent.
 
+**Your other addresses, labels and mailbox size**
+
+> "Which addresses can I send from?"
+>
+> "Draft it from sales@ instead."
+>
+> "Label these three mails 'invoices'." / "Show me everything labelled invoices."
+>
+> "How full is my mailbox?"
+
+If you have extra addresses (aliases), the assistant can draft from one of them; when you send, the confirmation's first line says **FROM** that address. Labels are tags on mail, as your mail app shows them (letters, digits, '.', '_' and '-'). The mailbox size shows how much you use and your limit, if there is one.
+
 **Out of office**
 
 > "Set my out-of-office from 1 to 5 December: I'm away, Anna covers for me."
@@ -161,6 +173,14 @@ The first line always names the subject, the recipients and any attachments (som
 
 Private entries stay private. When you ask for a meeting with others, the assistant shows a confirmation first, like for sending email: the first line names the people, the title and the time, and marks anyone outside the company. After Accept, the event is in your calendar and the others get an invitation by email. For colleagues it sees only *when* they're busy, never what their meetings are. Moving or cancelling a meeting you organize, and deleting a private entry also show a confirmation first: the first line says what happens and who gets an email. Repeating meetings show up on each of their days. You can answer a whole series (single meetings of a series: in your calendar app), and for a series you organize you can move or cancel one meeting, or change the title, place or text of all of them; the confirmation says whether it's one meeting or ALL of them. Moving every meeting of a series or changing how often it repeats: use your calendar app. Answering an invitation also asks first, and the organizer gets your answer. Invitations from people outside the company don't appear in your calendar by themselves: ask the assistant to add one from the mail (it shows the organizer and asks first; nothing is sent), then answer it.
 
+> "Which calendars have colleagues shared with me?"
+>
+> "What's on the team calendar next week?"
+>
+> "Add 'Office closed' on 24 December to the team calendar."
+
+Calendars a colleague (or a shared mailbox) shares with you can be read like your own. If the share lets you add events, the assistant can add one after you confirm, because everyone who sees that calendar sees it. Changing or cancelling events in someone else's calendar: use your calendar app.
+
 ### Contacts
 
 > "What's Ben's phone number?"
@@ -172,6 +192,10 @@ Private entries stay private. When you ask for a meeting with others, the assist
 > "Ben's new title is CTO."
 
 The assistant searches your address book and the company directory. It can add people to your address book and change them (company directory entries belong to the company and can't be changed). Deleting a contact asks you first, showing who it is, because it can't be undone.
+
+> "Make a contact group 'Board' with Anna and Ben." / "Add Hugo to the Board group."
+
+Contact groups live in your address book; their members are your contacts (add someone as a contact first). Taking someone out of a group keeps them as a contact.
 
 ### Files
 

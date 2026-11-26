@@ -24,13 +24,23 @@ type fakeCal struct {
 	mails       []any          // Email/get answer
 	parsed      map[string]any // CalendarEvent/parse answer
 	queries     int            // CalendarEvent/query calls
+	// shared: other calendar accounts the session lists (S: anna's, may
+	// add; R: board's, read only), with their events.
+	shared map[string]map[string]map[string]any
 }
 
 func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Calendars: "A", jmap.Mail: "A"}})
+			cal := map[string]any{jmap.Calendars: map[string]any{}}
+			accts := map[string]any{"A": map[string]any{"name": "me@co.example", "isPersonal": true, "accountCapabilities": cal}}
+			if f.shared != nil {
+				accts["S"] = map[string]any{"name": "anna@co.example", "accountCapabilities": cal}
+				accts["R"] = map[string]any{"name": "board@co.example", "accountCapabilities": cal}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"apiUrl": srv.URL + "/api", "primaryAccounts": map[string]string{jmap.Calendars: "A", jmap.Mail: "A"},
+				"accounts": accts})
 			return
 		}
 		var req struct{ MethodCalls [][]json.RawMessage }
@@ -46,6 +56,10 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 			_ = json.Unmarshal(mc[1], &args)
 			_ = json.Unmarshal(mc[2], &id)
 			var res any
+			events := f.events
+			if a, _ := args["accountId"].(string); a != "A" && f.shared != nil {
+				events = f.shared[a]
+			}
 			switch name {
 			case "CalendarEvent/query":
 				// As Stalwart 1.1: a window finds an event only by its first
@@ -53,9 +67,9 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 				f.queries++
 				ids := []any{}
 				flt, _ := args["filter"].(map[string]any)
-				for _, k := range slices.Sorted(maps.Keys(f.events)) {
-					st, _ := f.events[k]["start"].(string)
-					tz, _ := f.events[k]["timeZone"].(string)
+				for _, k := range slices.Sorted(maps.Keys(events)) {
+					st, _ := events[k]["start"].(string)
+					tz, _ := events[k]["timeZone"].(string)
 					if tz == "" {
 						tz = "Europe/Berlin"
 					}
@@ -82,7 +96,7 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 					ids = lastIDs
 				}
 				for _, id := range ids {
-					if e, ok := f.events[id.(string)]; ok {
+					if e, ok := events[id.(string)]; ok {
 						if _, ok := args["properties"]; ok {
 							// As Stalwart: a properties list drops the rules.
 							e = maps.Clone(e)
@@ -98,7 +112,15 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 			case "CalendarEvent/parse":
 				res = map[string]any{"parsed": f.parsed}
 			case "Calendar/get":
-				res = map[string]any{"list": []map[string]any{{"id": "c1", "isDefault": true}}}
+				res = map[string]any{"list": []map[string]any{{"id": "c1", "name": "Mine", "isDefault": true}}}
+				switch args["accountId"] {
+				case "S":
+					res = map[string]any{"list": []map[string]any{
+						{"id": "s1", "name": "Anna", "isDefault": true, "myRights": map[string]bool{"mayReadItems": true, "mayWriteOwn": true}},
+						{"id": "s2", "name": "Anna private", "myRights": map[string]bool{"mayReadFreeBusy": true}}}}
+				case "R":
+					res = map[string]any{"list": []map[string]any{{"id": "r1", "name": "Board", "myRights": map[string]bool{"mayReadItems": true}}}}
+				}
 			case "CalendarEvent/set":
 				f.sets = append(f.sets, args)
 				e := map[string]any{"id": "ev1"}

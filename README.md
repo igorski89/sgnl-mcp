@@ -26,18 +26,21 @@ groups, the server's health).
 | `mail_attachment_read` | mail (JMAP) | an attachment as text |
 | `mail_attachment_save` | mail → files | an attachment as a new file in the drive (personal space by default; shared space: confirmation) |
 | `mailbox_list` | mail (JMAP) | folders with unread counts; also the shared mailboxes the person is a member of |
-| `mail_draft_create` | mail (JMAP) | new mail, reply, reply-all or forward, saved in Drafts |
+| `mail_draft_create` | mail (JMAP) | new mail, reply, reply-all or forward, saved in Drafts; optionally from one of the person's other addresses (`from`) |
+| `identity_list` | mail (JMAP) | the addresses the person (or a shared mailbox) can send from: own address and aliases |
+| `mailbox_size` | mail (JMAP) | mail space used, the limit and percent, the largest folders by count |
 | `mail_draft_update` | mail (JMAP) | change a draft (replaced by a new draft) |
-| `mail_flag` | mail (JMAP) | read / unread, flagged |
+| `mail_flag` | mail (JMAP) | read / unread, flagged, labels (keywords; never system ones); `mail_search` filters by label |
 | `mail_move` | mail (JMAP) | move between folders; never to Trash, Junk, Sent or Drafts |
 | `mail_folder_create`, `mail_folder_rename` | mail (JMAP) | create a folder, rename one of the person's own (never a standard one); never delete. In a shared mailbox **only after the person confirms** |
 | `mail_trash` | mail (JMAP) | move mail to Trash (at most 25), **only after the person confirms**; restorable |
 | `out_of_office_get` | mail (JMAP) | the automatic reply: on/off, dates, text |
 | `out_of_office_set` | mail (JMAP) | switch it on (**only after the person confirms** dates and whole text; plain text) or off |
-| `mail_send` | mail (JMAP) | send a draft, **only after the person confirms** |
-| `event_list` | calendar (JMAP) | events in a date range; each meeting of a repeating series on its own day (the gateway expands series itself: the mail server's query finds a series only by its first day) |
+| `mail_send` | mail (JMAP) | send a draft, **only after the person confirms**; the first line names a sender other than the main address |
+| `calendar_list` | calendar (JMAP) | the person's calendars and those shared with them, with whether they may add events |
+| `event_list` | calendar (JMAP) | events in a date range (own, or with `account` a shared calendar); each meeting of a repeating series on its own day (the gateway expands series itself: the mail server's query finds a series only by its first day) |
 | `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
-| `event_create` | calendar (JMAP) | a private event, no participants |
+| `event_create` | calendar (JMAP) | a private event, no participants; into a calendar shared with the person (if they may add) **only after the person confirms** |
 | `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |
 | `event_import` | mail → calendar | add an invitation received by mail (e.g. from outside) to the calendar, **only after the person confirms**; mails no one |
 | `event_respond` | calendar (JMAP) | answer an invitation (accept/decline/maybe); the organizer is mailed, **only after the person confirms** |
@@ -47,6 +50,7 @@ groups, the server's health).
 | `contact_search` | contacts (JMAP) | address book and company directory |
 | `contact_create`, `contact_update` | contacts (JMAP) | add or change a card in the person's address book (name, emails, phones, company, title, note) |
 | `contact_delete` | contacts (JMAP) | delete one card, **only after the person confirms**, seeing it |
+| `contact_groups`, `contact_group_create`, `contact_group_update` | contacts (JMAP) | the person's contact groups with members; create one; rename, add or remove members (members are cards of the address book) |
 | `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
 | `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx/.odt, spreadsheets .xlsx/.ods, presentations .pptx/.odp; hidden sheets, rows, slides and text left out) |
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |

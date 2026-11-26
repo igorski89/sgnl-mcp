@@ -105,12 +105,14 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Switch your automatic out-of-office reply on (dates, subject, plain text) or off. Switching on asks the person first, showing the dates and the whole text, because everyone who writes gets it, outside the company too. Give an end date unless the person wants none. Switching off needs no question."}, t.outOfOfficeSet)
 
 	// Calendar
+	add(t, s, &mcp.Tool{Name: "calendar_list", Annotations: ro,
+		Description: "Your calendars and those colleagues (or shared mailboxes) share with you: owner, name, and whether you may add events. Pass account to event_list, event_read or event_create to use a shared one."}, t.calendarList)
 	add(t, s, &mcp.Tool{Name: "event_list", Annotations: ro,
-		Description: "Your calendar events in a date range (default: the next 7 days). Each meeting of a repeating series is listed on its own day (repeats, occurrence)."}, t.eventList)
+		Description: "Your calendar events in a date range (default: the next 7 days); with account, a calendar shared with you (calendar_list). Each meeting of a repeating series is listed on its own day (repeats, occurrence)."}, t.eventList)
 	add(t, s, &mcp.Tool{Name: "event_read", Annotations: ro,
 		Description: "One event in full: time, place, description, organizer, the attendees and their answers (accepted, declined, …), and whether you are organizer or attendee and what you answered. " + untrustedEvent}, t.eventRead)
 	add(t, s, &mcp.Tool{Name: "event_create", Annotations: wr,
-		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). No one is invited: for a meeting with others use event_invite."}, t.eventCreate)
+		Description: "Add a private event to your calendar (focus time, reminder, personal appointment). No one is invited: for a meeting with others use event_invite. With account: to a calendar shared with you that you may add to (calendar_list), only after the person confirms, since everyone who sees it sees the event."}, t.eventCreate)
 	add(t, s, &mcp.Tool{Name: "event_invite", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 		Description: "Create a meeting in your calendar and invite people to it: they get an invitation by email. The person is asked in their app first, with every attendee shown; nothing is created or sent without their yes. Check free times first with availability_get."}, t.eventInvite)
 	add(t, s, &mcp.Tool{Name: "event_import", Annotations: wr,
@@ -202,10 +204,16 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 		if a, ok := any(in).(accountChooser); ok && a.account() != "" {
 			ctx = withAccount(ctx, a.account())
 		}
+		if a, ok := any(in).(calendarChooser); ok && a.calAccount() != "" {
+			ctx = withCalAccount(ctx, a.calAccount())
+		}
 		c, _ := auth.Person(ctx)
 		l := slog.With("tool", tool.Name, "kind", kind, "user", c.Username)
 		if a := accountOf(ctx); a != "" {
 			l = l.With("account", a)
+		}
+		if a := calAccountOf(ctx); a != "" {
+			l = l.With("calendar_account", a)
 		}
 		// Who may use it is decided on the person as the login server has
 		// them now (not the groups of their original login), so removing
