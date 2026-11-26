@@ -30,6 +30,9 @@ type Stalwart struct {
 	Base string // https://mail.<apps domain>
 	Key  string // API_…
 	HTTP *http.Client
+	// Write: a key that may also change accounts (mail_write.go); only
+	// then is x:Account/set ever sent, and only as checkSet allows.
+	Write bool
 
 	mu   sync.Mutex
 	acct string
@@ -137,7 +140,11 @@ func (m *Stalwart) session(ctx context.Context) (string, string, error) {
 // call: checked reads; the answers (blobIds stripped) in order.
 func (m *Stalwart) call(ctx context.Context, calls ...mcall) ([]map[string]any, error) {
 	for _, c := range calls {
-		if err := checkMail(c); err != nil {
+		check := checkMail
+		if c.method == "x:Account/set" && m.Write {
+			check = checkSet
+		}
+		if err := check(c); err != nil {
 			return nil, err
 		}
 	}
@@ -194,8 +201,8 @@ func str(m map[string]any, k string) string {
 }
 
 // directory: every account and the domain names, for one answer.
-func (t *Tools) directory(ctx context.Context) ([]map[string]any, map[string]string, error) {
-	r, err := t.Mail.call(ctx,
+func directory(ctx context.Context, m *Stalwart) ([]map[string]any, map[string]string, error) {
+	r, err := m.call(ctx,
 		mcall{"x:Account/query", map[string]any{"limit": 2000}},
 		mcall{"x:Account/get", map[string]any{"#ids": map[string]any{"resultOf": "0", "name": "x:Account/query", "path": "/ids"},
 			"properties": mailReads["x:Account/get"]}},
@@ -236,10 +243,15 @@ func mib(v any) *float64 {
 }
 
 func (t *Tools) mailAccounts(ctx context.Context) ([]MailAccount, error) {
-	accts, domains, err := t.directory(ctx)
+	accts, domains, err := directory(ctx, t.Mail)
 	if err != nil {
 		return nil, err
 	}
+	return accountsFrom(accts, domains), nil
+}
+
+// accountsFrom: the server's accounts as people read them.
+func accountsFrom(accts []map[string]any, domains map[string]string) []MailAccount {
 	byID := map[string]*MailAccount{}
 	var out []*MailAccount
 	for _, a := range accts {
@@ -307,7 +319,7 @@ func (t *Tools) mailAccounts(ctx context.Context) ([]MailAccount, error) {
 		res = append(res, *m)
 	}
 	slices.SortFunc(res, func(a, b MailAccount) int { return strings.Compare(a.Kind+a.Name, b.Kind+b.Name) })
-	return res, nil
+	return res
 }
 
 // ---- mail_mailboxes

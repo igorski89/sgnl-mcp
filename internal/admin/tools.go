@@ -39,6 +39,12 @@ type Tools struct {
 	// Mail: the mail server's management API with the gateway's read-only
 	// key (nil: no mail admin tools).
 	Mail *Stalwart
+	// MailWrite: the gateway's mail key that may also change accounts
+	// (read + update; Write set). nil: no mail changes. Needs Ask.
+	MailWrite *Stalwart
+	// MailProtected: mail accounts never changed here (machine accounts;
+	// default mcp-gateway, ses-relay). People also need a login account.
+	MailProtected []string
 	// CertHosts: public hosts whose certificates ops_certs checks.
 	CertHosts []string
 	// GroupApps: what the instance's own groups open, shown when someone
@@ -85,12 +91,24 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(t, s, &mcp.Tool{Name: "ops_certs", Annotations: ro,
 			Description: "TLS certificates of the instance's public sites: expiry and days left, soonest first; broken ones first."}, t.certs)
 	}
-	if t.Write == nil || t.Ask == nil {
-		return
-	}
 	const asks = " The admin is asked in their app first; nothing changes without their yes."
 	w := &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(false)}
 	d := &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)}
+	if t.MailWrite != nil && t.Ask != nil {
+		add(t, s, &mcp.Tool{Name: "mail_group_member_add", Annotations: w,
+			Description: "Add a person to a shared mailbox (e.g. contact@): they read it and can send as it." + asks}, t.memberAdd)
+		add(t, s, &mcp.Tool{Name: "mail_group_member_remove", Annotations: d,
+			Description: "Remove a person from a shared mailbox: they lose access to it and its mail (the mailbox and mail stay). Never its last member." + asks}, t.memberRemove)
+		add(t, s, &mcp.Tool{Name: "mail_alias_add", Annotations: w,
+			Description: "Give a person an extra address (alias) on a company domain; refused if the address is already in use." + asks}, t.aliasAdd)
+		add(t, s, &mcp.Tool{Name: "mail_alias_remove", Annotations: d,
+			Description: "Remove a person's extra address (alias): mail to it no longer reaches them. Not their own address." + asks}, t.aliasRemove)
+		add(t, s, &mcp.Tool{Name: "mail_quota_set", Annotations: w,
+			Description: "Set a mailbox's size limit (e.g. 5 GB, or 'no limit'); never below what it already uses." + asks}, t.quotaSet)
+	}
+	if t.Write == nil || t.Ask == nil {
+		return
+	}
 	if t.UserDomain != "" {
 		add(t, s, &mcp.Tool{Name: "admin_invite", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)},
 			Description: "Invite a new person: creates their login (group sgnl_invited only: no app yet) and emails a set-up link (password + passkey) to an address they can read now, usually a personal one. Afterwards: admin_finish_invite. Their company mailbox isn't created here." + asks}, t.invite)

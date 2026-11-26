@@ -123,6 +123,22 @@ delivered?"). The gateway asks only for listed properties, never a queued
 message's `blobId` (with which its content could be downloaded) or
 credentials, strips `blobId` from any answer, and has no download code.
 
+Mail admin changes, with a second key `SGNL_MCP_STALWART_WRITE_API_KEY`
+(the same account's permissions plus `sysAccountUpdate`; leave it unset
+to switch changes off alone): `mail_group_member_add` / `_remove` (a
+person in or out of a shared mailbox), `mail_alias_add` / `_remove` (a
+person's extra address on a company domain; refused if the address is in
+use anywhere, including disabled aliases) and `mail_quota_set` (a size or
+"no limit", never below what is used). Each is confirmed by the admin,
+bound to what they were shown. The live mail server is the record for
+members and aliases (keep them out of the instance's mail plan). Each change
+is one `x:Account/set` with exactly one update of `memberGroupIds`,
+`aliases` or `quotas`, as a whole object: the server's current value
+with the one change, so disabled aliases and other quota keys survive.
+Never: creating or deleting accounts, groups or mail; the last member of a
+shared mailbox; machine accounts (`SGNL_MCP_MAIL_PROTECTED`, default
+`mcp-gateway,ses-relay`, and any account without a login of the same name).
+
 ## How it works
 
 - **Login:** the gateway is an OAuth 2.1 resource server. It publishes
