@@ -18,6 +18,8 @@ groups, the server's health).
 
 | tool | app | does |
 |---|---|---|
+| `my_sessions` | login server (admin API, own account only) | open session count and recent logins (when, IP) of the caller; `SGNL_MCP_SELF_ACCOUNT` |
+| `logout_everywhere` | login server (admin API, own account only) | end every session and token of the caller, **after they confirm**; the username is never an input |
 | `whoami` | login server | username, name, email, groups |
 | `day_overview` | all | today's events, unread mail, files changed today |
 | `mail_search` | mail (JMAP) | messages by words / sender / date / folder / unread: id, folder, sender, subject, date, preview |
@@ -41,6 +43,7 @@ groups, the server's health).
 | `event_list` | calendar (JMAP) | events in a date range (own, or with `account` a shared calendar); each meeting of a repeating series on its own day (the gateway expands series itself: the mail server's query finds a series only by its first day) |
 | `event_read` | calendar (JMAP) | one event in full: organizer, attendees and their answers |
 | `event_create` | calendar (JMAP) | a private event, no participants; into a calendar shared with the person (if they may add) **only after the person confirms** |
+| `event_update` / `event_cancel` with `account` | calendar (JMAP) | in a calendar shared with the person that lets them change any event (mayWriteAll), **always asked**: private entries (no one mailed) or meetings its owner organizes (updates in the owner's name) |
 | `event_invite` | calendar (JMAP) | a meeting with attendees, who get invitations, **only after the person confirms** |
 | `event_import` | mail → calendar | add an invitation received by mail (e.g. from outside) to the calendar, **only after the person confirms**; mails no one |
 | `event_respond` | calendar (JMAP) | answer an invitation (accept/decline/maybe); the organizer is mailed, **only after the person confirms** |
@@ -51,11 +54,12 @@ groups, the server's health).
 | `contact_create`, `contact_update` | contacts (JMAP) | add or change a card in the person's address book (name, emails, phones, company, title, note) |
 | `contact_delete` | contacts (JMAP) | delete one card, **only after the person confirms**, seeing it |
 | `contact_groups`, `contact_group_create`, `contact_group_update` | contacts (JMAP) | the person's contact groups with members; create one; rename, add or remove members (members are cards of the address book) |
-| `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
+| `file_search` | files (OpenCloud) | files and folders by name and/or by words inside them (the file app's content index), across all spaces the person can see; never match excerpts (the index holds hidden text too) |
 | `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx/.odt, spreadsheets .xlsx/.ods, presentations .pptx/.odp; hidden sheets, rows, slides and text left out) |
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
 | `file_share` | files (OpenCloud) | share a file or folder in the personal space with one colleague (view/edit), **only after the person confirms**; no links |
-| `file_save` | files (OpenCloud) | a new text file, never overwriting; **a project space or shared folder needs a confirmation** |
+| `file_save` | files (OpenCloud) | a new file, never overwriting: text, a Word `.docx` from Markdown or an Excel `.xlsx` from typed sheets (generated with the standard library: no macros, no formulas, nothing fetched); **a project space or shared folder needs a confirmation** |
+| `file_copy` | files (OpenCloud) | copy a file or folder, also into another space, never over a name; **asks where others see the copy** |
 | `folder_create` | files (OpenCloud) | a new folder (same rule) |
 | `file_move` | files (OpenCloud) | rename/move within a space, never over a name; **asks where others see it** |
 | `file_trash` / `file_trash_list` / `file_restore` | files (OpenCloud) | to the trash bin (**always asks**), list it, restore to the old place |

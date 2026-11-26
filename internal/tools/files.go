@@ -2,9 +2,14 @@ package tools
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
+	"github.com/igorski89/sgnl-mcp/internal/office"
+	"math"
 	"net/url"
 	"path"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -154,9 +159,10 @@ func (t *Tools) folderList(ctx context.Context, _ *mcp.CallToolRequest, in Folde
 // ---- file_save: a NEW text file (never overwrites)
 
 type FileSaveIn struct {
-	Folder  string `json:"folder,omitempty" jsonschema:"folder path from folder_list (a space's path for its top level); default /: the top of your personal space"`
-	Name    string `json:"name" jsonschema:"file name with extension: .md, .txt, .csv, .json, .yaml"`
-	Content string `json:"content" jsonschema:"the file's text"`
+	Folder  string         `json:"folder,omitempty" jsonschema:"folder path from folder_list (a space's path for its top level); default /: the top of your personal space"`
+	Name    string         `json:"name" jsonschema:"file name with extension: .md, .txt, .csv, .json, .yaml, .docx (Word), .xlsx (Excel)"`
+	Content string         `json:"content,omitempty" jsonschema:"the file's text; for .docx Markdown (# headings, paragraphs, - and 1. lists, | tables |, **bold**, *italic*); for .xlsx CSV (or give sheets)"`
+	Sheets  []office.Sheet `json:"sheets,omitempty" jsonschema:"for .xlsx: the sheets with typed cells (numbers, true/false, text, dates as YYYY-MM-DD)"`
 }
 
 type FileSaveOut struct {
@@ -180,10 +186,66 @@ func spaceOf(spaces []opencloud.Space, folder string) *opencloud.Space {
 	return best
 }
 
+var reNumber = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+// officeFile: the bytes of a .docx or .xlsx made from the input.
+func officeFile(in FileSaveIn) ([]byte, string, error) {
+	switch strings.ToLower(path.Ext(in.Name)) {
+	case ".docx":
+		if len(in.Sheets) > 0 {
+			return nil, "", fmt.Errorf("sheets are for .xlsx; a .docx takes content (Markdown)")
+		}
+		b, err := office.Docx(in.Content, strings.TrimSuffix(in.Name, path.Ext(in.Name)))
+		return b, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", err
+	case ".xlsx":
+		sheets := in.Sheets
+		if len(sheets) == 0 {
+			if strings.TrimSpace(in.Content) == "" {
+				return nil, "", fmt.Errorf("a .xlsx needs sheets (or content as CSV)")
+			}
+			rows, err := csv.NewReader(strings.NewReader(in.Content)).ReadAll()
+			if err != nil {
+				return nil, "", fmt.Errorf("content isn't CSV: %v", err)
+			}
+			sh := office.Sheet{Name: "Sheet1"}
+			for _, r := range rows {
+				row := make([]any, len(r))
+				for i, c := range r {
+					row[i] = c
+					// A number stays a number; codes with leading zeros
+					// (007, 0049…) and NaN/Inf stay text.
+					if f, err := strconv.ParseFloat(c, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) &&
+						reNumber.MatchString(c) && !(len(c) > 1 && c[0] == '0' && c[1] != '.') {
+						row[i] = f
+					}
+				}
+				sh.Rows = append(sh.Rows, row)
+			}
+			sheets = []office.Sheet{sh}
+		}
+		b, err := office.Xlsx(sheets)
+		return b, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", err
+	}
+	return nil, "", nil
+}
+
 func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileSaveIn) (*mcp.CallToolResult, FileSaveOut, error) {
+	data := []byte(in.Content)
 	ct, ok := saveTypes[strings.ToLower(path.Ext(in.Name))]
-	if !ok {
-		return nil, FileSaveOut{}, fmt.Errorf("name: use .md, .txt, .csv, .json or .yaml")
+	if ok {
+		if len(in.Sheets) > 0 {
+			return nil, FileSaveOut{}, fmt.Errorf("sheets are for .xlsx")
+		}
+		ct += "; charset=utf-8"
+	} else {
+		b, oct, err := officeFile(in)
+		if err != nil {
+			return nil, FileSaveOut{}, err
+		}
+		if oct == "" {
+			return nil, FileSaveOut{}, fmt.Errorf("name: use .md, .txt, .csv, .json, .yaml, .docx or .xlsx")
+		}
+		data, ct = b, oct
 	}
 	if len(in.Content) > 2<<20 {
 		return nil, FileSaveOut{}, fmt.Errorf("content: at most 2 MB")
@@ -212,7 +274,7 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 		return nil, FileSaveOut{}, err
 	}
 	if seen != "" {
-		res, ok, err := t.confirm(ctx, req, fmt.Sprintf("Save %q (%d bytes) in %s? %s", oneLine(in.Name, 80), len(in.Content), shownPlace(sp, in.Folder), seen), sp.Path+"|"+in.Folder)
+		res, ok, err := t.confirm(ctx, req, fmt.Sprintf("Save %q (%d bytes) in %s? %s", oneLine(in.Name, 80), len(data), shownPlace(sp, in.Folder), seen), sp.Path+"|"+in.Folder+"|"+fmt.Sprint(len(data)))
 		if err != nil || res != nil {
 			return res, FileSaveOut{}, err
 		}
@@ -220,7 +282,7 @@ func (t *Tools) fileSave(ctx context.Context, req *mcp.CallToolRequest, in FileS
 			return nil, FileSaveOut{}, fmt.Errorf("the person declined: nothing was saved")
 		}
 	}
-	p, err := t.Files.SaveNew(ctx, tok, in.Folder, in.Name, ct+"; charset=utf-8", []byte(in.Content))
+	p, err := t.Files.SaveNew(ctx, tok, in.Folder, in.Name, ct, data)
 	if err != nil {
 		return nil, FileSaveOut{}, err
 	}

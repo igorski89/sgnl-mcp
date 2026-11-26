@@ -166,7 +166,7 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(t, s, &mcp.Tool{Name: "file_share", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
 			Description: "Share a file or folder from your personal space with one colleague (view, or edit). The person is asked in their app first, with what, whom and the access shown; nothing is shared without their yes. No public links."}, t.fileShare)
 		add(t, s, &mcp.Tool{Name: "file_save", Annotations: wr,
-			Description: "Save a NEW text file (.md, .txt, .csv, .json, .yaml) into a folder. Never overwrites an existing file. Into a project space or a folder shared with others the person is asked to confirm first, because others will see it."}, t.fileSave)
+			Description: "Save a NEW file into a folder: text (.md, .txt, .csv, .json, .yaml), a Word document (.docx, from Markdown in content) or an Excel workbook (.xlsx, from sheets of typed cells, or CSV in content). Never overwrites an existing file. Into a project space or a folder shared with others the person is asked to confirm first, because others will see it."}, t.fileSave)
 		add(t, s, &mcp.Tool{Name: "file_shares", Annotations: ro,
 			Description: "What others share with you, and what you share: each item with whom and how (view or edit). " + untrustedNames}, t.fileShares)
 		add(t, s, &mcp.Tool{Name: "file_versions", Annotations: ro,

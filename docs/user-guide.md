@@ -179,7 +179,7 @@ Private entries stay private. When you ask for a meeting with others, the assist
 >
 > "Add 'Office closed' on 24 December to the team calendar."
 
-Calendars a colleague (or a shared mailbox) shares with you can be read like your own. If the share lets you add events, the assistant can add one after you confirm, because everyone who sees that calendar sees it. Changing or cancelling events in someone else's calendar: use your calendar app.
+Calendars a colleague (or a shared mailbox) shares with you can be read like your own. If the share lets you add events, the assistant can add one after you confirm, because everyone who sees that calendar sees it. If the share lets you change its events, the assistant can also change or cancel them, always asking first: private entries quietly, and meetings that calendar's owner organizes, where the attendees then get the update in the owner's name.
 
 ### Contacts
 
@@ -227,6 +227,14 @@ The assistant can save **new** text files, and change text files (Markdown, plai
 
 It can create folders, move and rename within a space, move files and folders to the **trash bin** and restore them, and restore an earlier version of a file. Moving to the trash bin and restoring a version always ask you first; nothing is ever deleted for good. Anything that others will see (saving, moving, editing or restoring into a project space or a folder you share) also asks you first, and the first line says so.
 
+> "Find the contract that mentions the penalty clause." *(searches inside documents, PDFs, spreadsheets and presentations)*
+>
+> "Make a Word document with these meeting notes." / "Put this table into an Excel file."
+>
+> "Copy the Q4 template into the Marketing space."
+
+Searching by words inside files finds documents whose text contains them; the assistant then reads the file to see what's there. It can create **new** Word (.docx) and Excel (.xlsx) files: headings, paragraphs, lists and tables for Word; sheets with numbers, dates and text for Excel (never formulas or macros). Copies never replace an existing file; a copy into a place others see asks you first.
+
 ### Putting it together
 
 > "Read today's unread mail, draft replies to the ones that need an answer, and tell me what's left for me."
@@ -234,6 +242,14 @@ It can create folders, move and rename within a space, move files and folders to
 > "Anna asked for a meeting: find a free slot for both of us, put a reminder in my calendar, and draft a reply proposing that time."
 >
 > "Summarize the attached contract and save the summary in my personal space."
+
+### Your logins
+
+> "Where am I logged in?"
+>
+> "Log me out everywhere." *(after losing a phone or laptop)*
+
+The assistant shows how many SGNL login sessions you have open and your recent logins (when and from which internet address). Logging out everywhere asks you first and ends every session and app login of yours, the assistant's too, so you log in again. App passwords you made for a mail app keep working: if a device with one is lost, ask whoever runs SGNL to remove it.
 
 ## Staying safe
 
