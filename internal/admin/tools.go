@@ -12,13 +12,30 @@ import (
 	"time"
 
 	"github.com/igorski89/sgnl-mcp/internal/auth"
+	"github.com/igorski89/sgnl-mcp/internal/confirm"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Tools: the admin endpoint's tools. Read-only in this version.
+// Tools: the admin endpoint's tools: reads with API; changes to people
+// and groups (write.go) only with Write, each confirmed by the admin.
 type Tools struct {
 	API    *Client
 	Admins []string // groups whose members may use them (default: admins)
+	// Write: the gateway's admin write client (scopes authelia.admin.read
+	// and .write). nil: no write tools.
+	Write *Client
+	// Ask: who may be asked to confirm a change (the same trusted clients
+	// as the person's own confirmed actions).
+	Ask *confirm.Asker
+	// UserDomain: the company domain of people's addresses
+	// (<username>@UserDomain). "": no admin_invite or admin_finish_invite.
+	UserDomain string
+	// Domains: the company's other mail domains (an invitation's set-up
+	// address there is marked a company mailbox).
+	Domains []string
+	// GroupApps: what the instance's own groups open, shown when someone
+	// is added or removed (SGNL's own groups are built in).
+	GroupApps map[string]string
 }
 
 const callTimeout = 30 * time.Second
@@ -35,7 +52,35 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Recent login attempts (successful or not, from which IP), newest first; optionally for one person."}, t.events)
 	add(t, s, &mcp.Tool{Name: "admin_audit", Annotations: ro,
 		Description: "Recent changes to accounts and groups (who changed what), newest first; optionally for one person."}, t.audit)
+	if t.Write == nil || t.Ask == nil {
+		return
+	}
+	const asks = " The admin is asked in their app first; nothing changes without their yes."
+	w := &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(false)}
+	d := &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)}
+	if t.UserDomain != "" {
+		add(t, s, &mcp.Tool{Name: "admin_invite", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)},
+			Description: "Invite a new person: creates their login (group sgnl_invited only: no app yet) and emails a set-up link (password + passkey) to an address they can read now, usually a personal one. Afterwards: admin_finish_invite. Their company mailbox isn't created here." + asks}, t.invite)
+		add(t, s, &mcp.Tool{Name: "admin_finish_invite", Annotations: w,
+			Description: "End an invitation once the person has set a password and a passkey: sets their company address and gives them sgnl_users (all apps) plus the groups named." + asks}, t.finishInvite)
+	}
+	add(t, s, &mcp.Tool{Name: "admin_group_add", Annotations: w,
+		Description: "Add a person to groups; the admin sees what each group opens." + asks}, t.groupAdd)
+	add(t, s, &mcp.Tool{Name: "admin_group_remove", Annotations: d,
+		Description: "Remove a person from groups; the admin sees what they lose. You can't remove yourself from the admin group or sgnl_users." + asks}, t.groupRemove)
+	add(t, s, &mcp.Tool{Name: "admin_group_create", Annotations: w,
+		Description: "Create a new, empty group." + asks}, t.groupCreate)
+	add(t, s, &mcp.Tool{Name: "admin_setup_email", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(true)},
+		Description: "Email a person a set-up link to their address on file, to set a new password and register a passkey (e.g. a lost passkey)." + asks}, t.setupEmail)
+	add(t, s, &mcp.Tool{Name: "admin_logout", Annotations: d,
+		Description: "End all of a person's login sessions and app tokens now (they can log in again). Not yourself." + asks}, t.logout)
+	add(t, s, &mcp.Tool{Name: "admin_disable", Annotations: d,
+		Description: "Disable a person's account: they lose access to everything now, every session and token ends; nothing is deleted. The admin must type the username to confirm. Not yourself." + asks}, t.disable)
+	add(t, s, &mcp.Tool{Name: "admin_enable", Annotations: w,
+		Description: "Enable a disabled account again." + asks}, t.enable)
 }
+
+func ptr[T any](v T) *T { return &v }
 
 // add: every admin tool only for members of an admin group, as the login
 // server has them now (not as their login says), each call logged.
@@ -65,9 +110,14 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 		defer cancel()
 		res, out, err := h(ctx, req, in)
 		l = l.With("ms", time.Since(start).Milliseconds())
-		if err != nil {
+		switch {
+		case errors.Is(err, errDecl):
+			l.Info("admin call", "outcome", "declined")
+		case err != nil:
 			l.Warn("admin call", "outcome", "error", "error", err.Error())
-		} else {
+		case res != nil && len(res.InputRequests) > 0:
+			l.Info("admin call", "outcome", "asked")
+		default:
 			l.Info("admin call", "outcome", "ok")
 		}
 		return res, out, err

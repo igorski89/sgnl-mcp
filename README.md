@@ -62,8 +62,31 @@ read-only admin tools (`admin_users`, `admin_user`, `admin_groups`,
 `admin_events`, `admin_audit`) over the login server's admin API. It takes
 only tokens issued for it (its URL in `aud`), and only members of
 `SGNL_MCP_ADMIN_GROUPS` (default `admins`) by the login server's current
-groups. The admin client is the one master credential the gateway holds:
-read scope only, every call logged with the acting person.
+groups. The admin client is read scope only; every call is logged with the
+acting person.
+
+Changes to people and groups need a second, separate client,
+`SGNL_MCP_ADMIN_WRITE_CLIENT_ID` / `_SECRET` (scopes `authelia.admin.read` and
+`authelia.admin.write`); without it there are no write tools, so writing can be
+switched off on its own. The write tools make only the changes
+`bin/sgnl-id` makes, with the same outcome, and **each one only after the
+admin confirms** in their app (the same trusted clients and fast-answer rule
+as the person's own confirmed actions):
+
+| Tool | Does | Refused |
+|---|---|---|
+| `admin_invite` | new login in `sgnl_invited` only (no app yet) and a set-up link (password + passkey, 72 h) to an address they can read now; the question marks it "(outside)" or "(a COMPANY mailbox)" | the account's own future address `<user>@<company domain>`; an existing username |
+| `admin_finish_invite` | sets `<user>@SGNL_MCP_ADMIN_USER_DOMAIN`, swaps `sgnl_invited` for `sgnl_users` plus the groups named | until they have a password and a passkey |
+| `admin_group_add` / `admin_group_remove` | memberships; the question lists what each group opens or closes (`SGNL_MCP_ADMIN_GROUP_APPS` for the instance's own groups); adding to an admin group says ADMIN RIGHTS first | removing yourself from an admin group or `sgnl_users` |
+| `admin_group_create` | a new, empty group | an existing name |
+| `admin_setup_email` | a set-up link to the address on file (24 h) | disabled accounts |
+| `admin_logout` | ends all their sessions and tokens | yourself |
+| `admin_disable` / `admin_enable` | disable ends every session and token; **the admin types the username** to confirm | disabling yourself |
+
+`admin_invite` and `admin_finish_invite` exist only with
+`SGNL_MCP_ADMIN_USER_DOMAIN`. The mailbox itself and the password manager
+aren't touched: group results say to run `bin/sgnl-vault-sync`. Never:
+deleting people, passwords or passkeys, lockouts.
 
 ## How it works
 

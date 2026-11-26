@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"github.com/igorski89/sgnl-mcp/internal/confirm"
 	"os"
 	"sync"
 	"testing"
@@ -13,7 +14,7 @@ import (
 func TestMain(m *testing.M) {
 	var mu sync.Mutex
 	t := time.Now()
-	confirmNow = func() time.Time {
+	confirm.Now = func() time.Time {
 		mu.Lock()
 		defer mu.Unlock()
 		t = t.Add(2 * time.Second)

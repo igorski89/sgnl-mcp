@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"github.com/igorski89/sgnl-mcp/internal/confirm"
 	"strings"
 	"testing"
 	"time"
@@ -13,10 +14,10 @@ import (
 // they were asked, live 2026-11-26). An accept that fast is refused,
 // unless the client is exempt on purpose.
 func TestAcceptTooFastIsRefused(t *testing.T) {
-	saved := confirmNow
-	t.Cleanup(func() { confirmNow = saved })
+	saved := confirm.Now
+	t.Cleanup(func() { confirm.Now = saved })
 	frozen := time.Now()
-	confirmNow = func() time.Time { return frozen }
+	confirm.Now = func() time.Time { return frozen }
 
 	run := func(fastOK []string, action string) *mcp.CallToolResult {
 		s := mcp.NewServer(&mcp.Implementation{Name: "t"}, nil)
