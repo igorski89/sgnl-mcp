@@ -131,6 +131,12 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Change a contact in your address book (id from contact_search): the fields given replace the old ones; the others stay. Company directory entries can't be changed."}, t.contactUpdate)
 	add(t, s, &mcp.Tool{Name: "contact_delete", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)},
 		Description: "Delete a contact from your address book (id from contact_search). The person is asked first, seeing the contact; it can't be undone."}, t.contactDelete)
+	add(t, s, &mcp.Tool{Name: "contact_groups", Annotations: ro,
+		Description: "Your contact groups (address book groups, e.g. a mailing group) with their members' names and email addresses."}, t.contactGroups)
+	add(t, s, &mcp.Tool{Name: "contact_group_create", Annotations: wr,
+		Description: "Create a contact group in your address book, optionally with members (contacts already in your address book)."}, t.contactGroupCreate)
+	add(t, s, &mcp.Tool{Name: "contact_group_update", Annotations: wr,
+		Description: "Rename a contact group, or add or remove members (removing only takes them out of the group). Delete a group with contact_delete."}, t.contactGroupUpdate)
 	add(t, s, &mcp.Tool{Name: "contact_search", Annotations: ro,
 		Description: "Find people: your address book and the company directory (name, emails, phones, company)."}, t.contactSearch)
 

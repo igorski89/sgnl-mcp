@@ -44,7 +44,7 @@ var allowed = []string{
 }
 
 // cardFields: what a contact card may carry when created or changed here.
-var cardFields = []string{"name", "emails", "phones", "organizations", "titles", "notes"}
+var cardFields = []string{"name", "emails", "phones", "organizations", "titles", "notes", "members"}
 
 // checkCard: ContactCard/set creates or updates one card (only cardFields;
 // a new card also its @type, version, kind, uid and address book), or,
@@ -68,7 +68,22 @@ func checkCard(call Call) error {
 			for _, x := range m {
 				n++
 				f, _ := x.(map[string]any)
-				for fk := range f {
+				for fk, fv := range f {
+					if fk == "members" {
+						mm, ok := fv.(map[string]any)
+						if !ok {
+							return fmt.Errorf("jmap: contact: members only as a whole object")
+						}
+						for _, on := range mm {
+							if on != true {
+								return fmt.Errorf("jmap: contact: a member must be true")
+							}
+						}
+						continue
+					}
+					if fk == "kind" && k == "create" && fv != "individual" && fv != "group" {
+						return fmt.Errorf("jmap: contact: kind %v is not allowed", fv)
+					}
 					if slices.Contains(cardFields, fk) {
 						continue
 					}

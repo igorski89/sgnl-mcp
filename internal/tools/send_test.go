@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -107,9 +109,21 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 				}
 			case "AddressBook/get":
 				res = map[string]any{"list": []map[string]any{{"id": "ab1", "isDefault": true}}}
+			case "ContactCard/query":
+				ids := []string{}
+				for k := range f.cards {
+					ids = append(ids, k)
+				}
+				slices.Sort(ids)
+				res = map[string]any{"ids": ids}
 			case "ContactCard/get":
 				list := []any{}
 				ids, _ := args["ids"].([]any)
+				if args["#ids"] != nil {
+					for _, k := range slices.Sorted(maps.Keys(f.cards)) {
+						ids = append(ids, k)
+					}
+				}
 				for _, i := range ids {
 					if c, ok := f.cards[i.(string)]; ok {
 						list = append(list, c)
@@ -120,10 +134,19 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 				f.cardSets = append(f.cardSets, args)
 				switch {
 				case args["create"] != nil:
+					if c, ok := args["create"].(map[string]any)["c"].(map[string]any); ok && f.cards != nil {
+						c["id"] = "card9"
+						f.cards["card9"] = c
+					}
 					res = map[string]any{"created": map[string]any{"c": map[string]any{"id": "card9"}}}
 				case args["destroy"] != nil:
 					res = map[string]any{"destroyed": args["destroy"]}
 				default:
+					for id, p := range args["update"].(map[string]any) {
+						if c, ok := f.cards[id].(map[string]any); ok {
+							maps.Copy(c, p.(map[string]any))
+						}
+					}
 					res = map[string]any{"updated": map[string]any{}}
 				}
 			case "Quota/get":

@@ -257,6 +257,13 @@ func TestContactCardGuard(t *testing.T) {
 	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"c1": map[string]any{"addressBookIds": map[string]bool{}}}}}, "addressBookIds")
 	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"c1": map[string]any{"media": map[string]any{}}}}}, "media")
 	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"create": map[string]any{"a": map[string]any{"name": 1}, "b": map[string]any{"name": 2}}}}, "exactly one")
+	ok(Call{Method: "ContactCard/set", Args: map[string]any{"accountId": "A", "create": map[string]any{"g": map[string]any{"kind": "group", "members": map[string]any{"urn:uuid:1": true}}}}})
+	ok(Call{Method: "ContactCard/set", Args: map[string]any{"accountId": "A", "update": map[string]any{"g": map[string]any{"members": map[string]any{}}}}})
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"g": map[string]any{"members/urn:uuid:1": true}}}}, "members/")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"g": map[string]any{"members": map[string]any{"u": false}}}}}, "member must be true")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"g": map[string]any{"members": []any{"u"}}}}}, "whole object")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"create": map[string]any{"g": map[string]any{"kind": "org"}}}}, "kind")
+	refused(t, Call{Method: "ContactCard/set", Args: map[string]any{"update": map[string]any{"g": map[string]any{"kind": "group"}}}}, "kind")
 	refused(t, Call{Method: "Email/set", DeleteContact: true, Args: map[string]any{"destroy": []string{"x"}}}, "contact delete")
 	refused(t, Call{Method: "AddressBook/set"}, "not allowed")
 }
