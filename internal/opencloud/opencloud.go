@@ -6,7 +6,6 @@
 package opencloud
 
 import (
-	"unicode"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -19,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var allowedMethods = []string{"GET", "PROPFIND", "REPORT", "PUT"}

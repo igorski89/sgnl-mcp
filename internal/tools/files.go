@@ -25,7 +25,7 @@ const (
 type FileSearchIn struct {
 	Query   string `json:"query,omitempty" jsonschema:"part of the file or folder name"`
 	Content string `json:"content,omitempty" jsonschema:"words inside the files (all of them must be there), e.g. invoice ACME"`
-	Limit int    `json:"limit,omitempty" jsonschema:"how many results, 1-50 (default 20)"`
+	Limit   int    `json:"limit,omitempty" jsonschema:"how many results, 1-50 (default 20)"`
 }
 
 type FileListOut struct {
