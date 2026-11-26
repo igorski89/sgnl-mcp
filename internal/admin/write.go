@@ -38,6 +38,15 @@ var defaultApps = map[string]string{
 	invitedGroup:    "only the login portal's settings page (set-up)",
 }
 
+// freeBusyNote: where everyone's free/busy is shared by an operator sync,
+// a new person is in it only once the sync has run for them.
+func (t *Tools) freeBusyNote() string {
+	if !t.FreeBusyShared {
+		return ""
+	}
+	return " Calendar free/busy: shared with colleagues only after bin/sgnl-freebusy-sync runs for them (now, and once after their first login); tell whoever runs the instance."
+}
+
 const vaultNote = "Password manager: its members and collections follow the groups only when bin/sgnl-vault-sync runs on an admin's laptop; tell whoever runs the instance."
 
 var (
@@ -386,7 +395,7 @@ func (t *Tools) finishInvite(ctx context.Context, req *mcp.CallToolRequest, in F
 		return nil, ChangeOut{}, partial(done, err)
 	}
 	return nil, ChangeOut{Done: "set-up finished", Username: in.Username, Email: email, Groups: t.groupsNow(ctx, in.Username), Apps: t.appsOf(add),
-		Note: "Done with the person's confirmation. Tell them they can use the apps now. " + vaultNote}, nil
+		Note: "Done with the person's confirmation. Tell them they can use the apps now. " + vaultNote + t.freeBusyNote()}, nil
 }
 
 // ---- admin_group_add / admin_group_remove

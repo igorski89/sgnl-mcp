@@ -319,6 +319,20 @@ func TestDeclinedChangesNothing(t *testing.T) {
 	}
 }
 
+// Where everyone's free/busy is shared by an operator sync, finishing an
+// invitation says to run it for the new person.
+func TestFinishInviteFreeBusyReminder(t *testing.T) {
+	f, read, write := newFake(t)
+	at := writeTools(read, write)
+	at.FreeBusyShared = true
+	cs, _ := wsession(t, at, yes)
+	f.users["anna"].Credentials = []string{"password", "webauthn"}
+	txt, isErr := call(t, cs, "admin_finish_invite", map[string]any{"username": "anna"})
+	if isErr || !strings.Contains(txt, "bin/sgnl-freebusy-sync runs for them") {
+		t.Fatalf("finish: %q", txt)
+	}
+}
+
 func TestFinishInvite(t *testing.T) {
 	f, read, write := newFake(t)
 	cs, asked := wsession(t, writeTools(read, write), yes)
@@ -336,7 +350,7 @@ func TestFinishInvite(t *testing.T) {
 		t.Fatal("asked or changed before the checks passed")
 	}
 	txt, isErr := call(t, cs, "admin_finish_invite", map[string]any{"username": "anna", "groups": []string{"developers"}})
-	if isErr || !strings.Contains(txt, `"groups":["developers","sgnl_users"]`) || !strings.Contains(txt, "sgnl-vault-sync") {
+	if isErr || !strings.Contains(txt, `"groups":["developers","sgnl_users"]`) || !strings.Contains(txt, "sgnl-vault-sync") || strings.Contains(txt, "freebusy") {
 		t.Fatalf("finish: %q", txt)
 	}
 	if first := strings.SplitN((*asked)[0].Message, "\n", 2)[0]; first != "Finish the set-up of anna: email anna@co.example, groups sgnl_users, developers?" {

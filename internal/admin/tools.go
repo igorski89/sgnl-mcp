@@ -47,6 +47,9 @@ type Tools struct {
 	MailProtected []string
 	// CertHosts: public hosts whose certificates ops_certs checks.
 	CertHosts []string
+	// FreeBusyShared: the instance shares everyone's free/busy by an
+	// operator sync; finishing an invitation reminds to run it.
+	FreeBusyShared bool
 	// GroupApps: what the instance's own groups open, shown when someone
 	// is added or removed (SGNL's own groups are built in).
 	GroupApps map[string]string

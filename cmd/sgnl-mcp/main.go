@@ -28,7 +28,8 @@
 //	SGNL_MCP_FILES_TRASH_DAYS the same for the file app's trash bin
 //	SGNL_MCP_FREEBUSY_SHARED set (1): every colleague's calendars share free/busy with
 //	                        everyone (an operator sync), so availability_get calls an
-//	                        empty list free; unset: "free, or not shared with you"
+//	                        empty list free, and admin_finish_invite reminds to run the
+//	                        sync; unset: "free, or not shared with you"
 //	SGNL_MCP_CONFIRM_FAST_OK login client ids whose instant "yes" is accepted (an
 //	                        accept under 1.5 s is otherwise refused as the app's own)
 //	SGNL_MCP_CONFIRM_CLIENTS login client ids whose apps may ask the person to confirm
@@ -294,6 +295,7 @@ func main() {
 			at.Ask = t.Asker()
 			at.UserDomain = strings.ToLower(os.Getenv("SGNL_MCP_ADMIN_USER_DOMAIN"))
 			at.Domains = t.InternalDomains
+			at.FreeBusyShared = t.FreeBusyShared
 			at.GroupApps = map[string]string{}
 			for _, p := range strings.Split(os.Getenv("SGNL_MCP_ADMIN_GROUP_APPS"), ";") {
 				if g, a, ok := strings.Cut(p, "="); ok && strings.TrimSpace(g) != "" {

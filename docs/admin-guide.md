@@ -59,7 +59,7 @@ Keep it separate from your everyday connection, and connect it only when you nee
    - The mailbox itself isn't made here: ask whoever runs the instance to add it.
 2. Tell her on another channel (phone, in person) to expect the email.
 3. **Finish:** once she has set a password and a passkey: *"Finish Anna's invitation, with the developers group."* It's refused until both are set. It then sets her company address and gives her access to the apps (`sgnl_users`) plus the groups you name.
-4. **Password manager:** its members follow the groups only after whoever runs the instance runs the sync. Each result reminds you.
+4. **Password manager (and, where the instance shares free/busy by default, calendar free/busy):** these follow only after whoever runs the instance runs their sync. Each result reminds you.
 
 If the link expired or got lost: *"Send Anna a new set-up link."*
 
