@@ -1,5 +1,5 @@
 // Package textx: plain text from documents (text formats, HTML, .docx,
-// PDF), for the model to read. Other formats are refused clearly.
+// PDF, spreadsheets and presentations: office.go), for the model to read. Other formats are refused clearly.
 package textx
 
 import (
@@ -195,6 +195,33 @@ func extract(name, ctype string, data []byte, truncated bool) (string, error) {
 			return "", fmt.Errorf("%s is too large to read", name)
 		}
 		return docx(data)
+	case ext == ".xlsx" || strings.Contains(ct, "spreadsheetml"):
+		if truncated {
+			return "", fmt.Errorf("%s is too large to read", name)
+		}
+		return xlsx(data)
+	case ext == ".pptx" || strings.Contains(ct, "presentationml"):
+		if truncated {
+			return "", fmt.Errorf("%s is too large to read", name)
+		}
+		return pptx(data)
+	case ext == ".ods" || ext == ".odp" || ext == ".odt" || strings.Contains(ct, "opendocument"):
+		if truncated {
+			return "", fmt.Errorf("%s is too large to read", name)
+		}
+		kind := ext
+		switch {
+		case strings.Contains(ct, "opendocument.spreadsheet"):
+			kind = ".ods"
+		case strings.Contains(ct, "opendocument.presentation"):
+			kind = ".odp"
+		case strings.Contains(ct, "opendocument.text"):
+			kind = ".odt"
+		}
+		if kind != ".ods" && kind != ".odp" && kind != ".odt" {
+			return "", fmt.Errorf("can't read %s files yet (%s)", ext, ctype)
+		}
+		return odf(kind, data)
 	case ext == ".pdf" || strings.Contains(ct, "application/pdf"):
 		if truncated {
 			return "", fmt.Errorf("%s is too large to read", name)
@@ -208,7 +235,7 @@ func extract(name, ctype string, data []byte, truncated bool) (string, error) {
 		}
 		return strings.ToValidUTF8(string(data), ""), nil
 	}
-	return "", fmt.Errorf("can't read %s files yet (%s); text, Markdown, CSV, HTML, PDF and .docx work", ext, ctype)
+	return "", fmt.Errorf("can't read %s files yet (%s); text, Markdown, CSV, HTML, PDF, Word (.docx, .odt), spreadsheets (.xlsx, .ods) and presentations (.pptx, .odp) work", ext, ctype)
 }
 
 var (

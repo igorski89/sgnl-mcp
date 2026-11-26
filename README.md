@@ -48,7 +48,7 @@ groups, the server's health).
 | `contact_create`, `contact_update` | contacts (JMAP) | add or change a card in the person's address book (name, emails, phones, company, title, note) |
 | `contact_delete` | contacts (JMAP) | delete one card, **only after the person confirms**, seeing it |
 | `file_search` | files (OpenCloud) | files and folders by name, across all spaces the person can see |
-| `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx) |
+| `file_read` | files (OpenCloud) | a file as text (text, Markdown, CSV, HTML, PDF, .docx/.odt, spreadsheets .xlsx/.ods, presentations .pptx/.odp; hidden sheets, rows, slides and text left out) |
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
 | `file_share` | files (OpenCloud) | share a file or folder in the personal space with one colleague (view/edit), **only after the person confirms**; no links |
 | `file_save` | files (OpenCloud) | a new text file, never overwriting; **a project space or shared folder needs a confirmation** |
