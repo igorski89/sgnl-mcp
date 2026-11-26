@@ -28,7 +28,7 @@ func newFakeMailW(t *testing.T) (*fakeMailW, *Stalwart) {
 		"g1": {"id": "g1", "@type": "Group", "name": "contact", "domainId": "d1"},
 		"g2": {"id": "g2", "@type": "Group", "name": "alerts", "domainId": "d1"},
 		"u1": {"id": "u1", "@type": "User", "name": "boss", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true, "g2": true},
-			"aliases": map[string]any{"0": map[string]any{"name": "postmaster", "domainId": "d1", "enable": true}, "1": map[string]any{"name": "old", "domainId": "d1", "enable": false}},
+			"aliases": map[string]any{"0": map[string]any{"name": "postmaster", "domainId": "d1", "enable": true, "description": nil}, "1": map[string]any{"name": "old", "domainId": "d1", "enable": false, "description": "kept"}},
 			"quotas":  map[string]any{"maxDiskQuota": float64(1 << 30), "other": float64(7)}, "usedDiskQuota": float64(300 << 20)},
 		"u2": {"id": "u2", "@type": "User", "name": "hugo", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true}},
 		"u3": {"id": "u3", "@type": "User", "name": "mcp-gateway", "domainId": "d1"},
@@ -161,6 +161,7 @@ func TestMailSetGuard(t *testing.T) {
 	ok := []mcall{
 		up(map[string]any{"memberGroupIds": map[string]any{"g1": true}}),
 		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "a", "domainId": "d1", "enable": true}}}),
+		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "a", "domainId": "d1", "enable": true, "description": nil}, "1": map[string]any{"name": "b", "description": "x"}}}),
 		up(map[string]any{"quotas": map[string]any{"maxDiskQuota": int64(5)}}),
 		up(map[string]any{"memberGroupIds": map[string]any{}}),
 	}
@@ -187,6 +188,7 @@ func TestMailSetGuard(t *testing.T) {
 		up(map[string]any{"memberGroupIds": map[string]any{"g1": "yes"}}),
 		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "x", "secret": "y"}}}),
 		up(map[string]any{"quotas": map[string]any{"maxDiskQuota": "big"}}),
+		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "x", "description": 5}}}),
 	}
 	for _, c := range bad {
 		if checkSet(c) == nil {
@@ -259,7 +261,7 @@ func TestMailAliases(t *testing.T) {
 	if _, isErr := call(t, cs, "mail_alias_add", map[string]any{"person": "boss", "alias": "info@co.example"}); isErr {
 		t.Fatal("add to boss")
 	}
-	if got := f.get("u1", "aliases"); got != `{"0":{"domainId":"d1","enable":true,"name":"postmaster"},"1":{"domainId":"d1","enable":false,"name":"old"},"2":{"domainId":"d1","enable":true,"name":"info"}}` {
+	if got := f.get("u1", "aliases"); got != `{"0":{"description":null,"domainId":"d1","enable":true,"name":"postmaster"},"1":{"description":"kept","domainId":"d1","enable":false,"name":"old"},"2":{"domainId":"d1","enable":true,"name":"info"}}` {
 		t.Errorf("boss's aliases: %s", got)
 	}
 	if _, isErr := call(t, cs, "mail_alias_remove", map[string]any{"alias": "postmaster@co.example"}); isErr {
@@ -268,7 +270,7 @@ func TestMailAliases(t *testing.T) {
 	if q := (*asked)[2].Message; !strings.HasPrefix(q, "Remove the address postmaster@co.example from boss: mail to it no longer reaches boss?") {
 		t.Errorf("question: %q", q)
 	}
-	if got := f.get("u1", "aliases"); got != `{"1":{"domainId":"d1","enable":false,"name":"old"},"2":{"domainId":"d1","enable":true,"name":"info"}}` {
+	if got := f.get("u1", "aliases"); got != `{"1":{"description":"kept","domainId":"d1","enable":false,"name":"old"},"2":{"domainId":"d1","enable":true,"name":"info"}}` {
 		t.Errorf("after remove: %s", got)
 	}
 	n, na := f.setCount(), len(*asked)

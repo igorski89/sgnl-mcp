@@ -27,8 +27,10 @@ import (
 
 // The only properties an update may carry, and what an alias may hold.
 var (
-	setProps   = []string{"memberGroupIds", "aliases", "quotas"}
-	aliasProps = []string{"name", "domainId", "enable"}
+	setProps = []string{"memberGroupIds", "aliases", "quotas"}
+	// description: kept as the server has it on existing aliases (it
+	// returns the key, often null); a new alias never gets one.
+	aliasProps = []string{"name", "domainId", "enable", "description"}
 )
 
 // checkSet: x:Account/set with exactly one update of setProps, each a
@@ -74,6 +76,9 @@ func checkSet(c mcall) error {
 					for ak, av := range al {
 						if !slices.Contains(aliasProps, ak) {
 							return fmt.Errorf("x:Account/set: alias property %s", short(ak))
+						}
+						if ak == "description" && av == nil {
+							continue
 						}
 						if _, s := av.(string); ak != "enable" && !s {
 							return fmt.Errorf("x:Account/set: alias %s isn't text", ak)
