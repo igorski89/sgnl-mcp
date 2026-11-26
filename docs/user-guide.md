@@ -233,6 +233,12 @@ It can create folders, move and rename within a space, move files and folders to
 >
 > "Copy the Q4 template into the Marketing space."
 
+> "Add this month's expenses to the Budget spreadsheet." / "Set B3 in Budget to 1300."
+>
+> "Add a summary section at the end of the Q4 report." / "In the contract, change 'Monday' to 'Tuesday'."
+
+It can also change existing Excel and Word files: add rows, set cells or add a sheet in a spreadsheet; add text at the end of a document, or replace a word or sentence that appears exactly once. You see every change before it's made, and the previous version is kept. It never writes formulas or changes cells that hold one, and it refuses files with macros, password protection or a structure it doesn't fully understand, rather than risk damaging them.
+
 Searching by words inside files finds documents whose text contains them; the assistant then reads the file to see what's there. It can create **new** Word (.docx) and Excel (.xlsx) files: headings, paragraphs, lists and tables for Word; sheets with numbers, dates and text for Excel (never formulas or macros). Copies never replace an existing file; a copy into a place others see asks you first.
 
 ### Putting it together

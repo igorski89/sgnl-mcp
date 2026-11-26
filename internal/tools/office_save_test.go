@@ -92,3 +92,58 @@ func TestFileSaveOfficeAndCopyThroughTheTools(t *testing.T) {
 		t.Errorf("over a name: %s", txt)
 	}
 }
+
+func TestFileOfficeEdit(t *testing.T) {
+	f := newDrive()
+	x, _ := office.Xlsx([]office.Sheet{{Name: "Q1", Rows: [][]any{{"Item", "Cost"}, {"Rent", 1200.0}}}})
+	d, _ := office.Docx("# Plan\n\nMeet Anna on Monday.", "")
+	f.set("/remote.php/dav/spaces/p/b.xlsx", string(x))
+	f.set("/remote.php/dav/spaces/p/plan.docx", string(d))
+	f.set("/remote.php/dav/spaces/p/m.xlsm", string(x))
+	var asked []string
+	answer := "accept"
+	cs := editSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = append(asked, r.Params.Message)
+		return &mcp.ElicitResult{Action: answer, Content: map[string]any{}}, nil
+	})
+	txt, isErr := callTool(t, cs, "file_office_edit", map[string]any{"path": "/b.xlsx", "changes": []any{
+		map[string]any{"sheet": "Q1", "set_cells": map[string]any{"B2": 1300}, "append_rows": []any{[]any{"Power", 80, "2026-02-01"}}}}})
+	if isErr {
+		t.Fatalf("xlsx: %s", txt)
+	}
+	if len(asked) != 1 || !strings.HasPrefix(asked[0], `Change "b.xlsx": Sheet "Q1": add 1 row(s) after the last one (rows 3–3)`) || !strings.Contains(asked[0], `Sheet "Q1", B2: 1200 → 1300`) {
+		t.Errorf("question: %q", asked)
+	}
+	if got, _ := textx.Extract("b.xlsx", "", []byte(f.files["/remote.php/dav/spaces/p/b.xlsx"]), false); got != "## Sheet: Q1\nItem\tCost\nRent\t1300\nPower\t80\t2026-02-01" {
+		t.Errorf("after: %q", got)
+	}
+	if _, isErr := callTool(t, cs, "file_office_edit", map[string]any{"path": "/plan.docx", "append": "## Next\n\n- one", "replace": []any{map[string]any{"old": "Monday", "new": "Tuesday"}}}); isErr {
+		t.Fatal("docx")
+	}
+	if got, _ := textx.Extract("plan.docx", "", []byte(f.files["/remote.php/dav/spaces/p/plan.docx"]), false); !strings.Contains(got, "Meet Anna on Tuesday.") || !strings.Contains(got, "• one") {
+		t.Errorf("docx after: %q", got)
+	}
+	// Declined: nothing written. Refusals: nothing asked.
+	answer = "decline"
+	before := f.files["/remote.php/dav/spaces/p/b.xlsx"]
+	if _, isErr := callTool(t, cs, "file_office_edit", map[string]any{"path": "/b.xlsx", "changes": []any{map[string]any{"sheet": "Q1", "set_cells": map[string]any{"A1": "x"}}}}); !isErr || f.files["/remote.php/dav/spaces/p/b.xlsx"] != before {
+		t.Error("declined but written")
+	}
+	n := len(asked)
+	for _, c := range []struct {
+		args map[string]any
+		want string
+	}{
+		{map[string]any{"path": "/m.xlsm", "changes": []any{map[string]any{"sheet": "Q1", "set_cells": map[string]any{"A1": 1}}}}, "macros"},
+		{map[string]any{"path": "/notes.md", "append": "x"}, "only .xlsx and .docx"},
+		{map[string]any{"path": "/b.xlsx", "append": "x"}, "for .xlsx give changes"},
+		{map[string]any{"path": "/plan.docx", "replace": []any{map[string]any{"old": "nowhere", "new": "x"}}}, "isn't in the document"},
+	} {
+		if txt, isErr := callTool(t, cs, "file_office_edit", c.args); !isErr || !strings.Contains(txt, c.want) {
+			t.Errorf("%v: %s, want %q", c.args, txt, c.want)
+		}
+	}
+	if len(asked) != n {
+		t.Error("asked for a refused edit")
+	}
+}

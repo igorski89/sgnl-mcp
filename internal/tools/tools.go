@@ -189,6 +189,8 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Stop sharing a file or folder of yours with one person (or remove its link). The person is asked first. Only for what you share directly; for an item inside a shared folder, stop sharing the folder."}, t.fileUnshare)
 		add(t, s, &mcp.Tool{Name: "folder_create", Annotations: wr,
 			Description: "Create a new, empty folder (default: at the top of your personal space). In a project space or a folder shared with others the person is asked first."}, t.folderCreate)
+		add(t, s, &mcp.Tool{Name: "file_office_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
+			Description: "Change an existing Excel (.xlsx) or Word (.docx) file: Excel: add rows after the last used one, set cells (A1-style), add a sheet (values typed; text starting with = stays text; formula cells are never overwritten); Word: append at the end, or replace an exact text that occurs once within one formatting run. Everything else stays byte-identical; anything the editor doesn't fully understand is refused. The person confirms every change; the previous version is kept."}, t.fileOfficeEdit)
 		add(t, s, &mcp.Tool{Name: "file_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
 			Description: "Change a text file (.md, .txt, .csv, .json, .yaml) in your personal space: exact replacements (old_text must occur exactly once) or one append, applied to the file as it is now. The person is asked in their app first, with the changes shown; nothing is written without their yes, and not if the file changed meanwhile. To make a new file use file_save."}, t.fileEdit)
 	}

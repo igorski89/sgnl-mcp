@@ -59,6 +59,7 @@ groups, the server's health).
 | `folder_list` | files (OpenCloud) | spaces, or a folder's contents |
 | `file_share` | files (OpenCloud) | share a file or folder in the personal space with one colleague (view/edit), **only after the person confirms**; no links |
 | `file_save` | files (OpenCloud) | a new file, never overwriting: text, a Word `.docx` from Markdown or an Excel `.xlsx` from typed sheets (generated with the standard library: no macros, no formulas, nothing fetched); **a project space or shared folder needs a confirmation** |
+| `file_office_edit` | files (OpenCloud) | change an existing `.xlsx` (append rows, set cells, add a sheet; never a formula, formula cells never overwritten, merged cells only at their top-left) or `.docx` (append at the end; replace an exact text that occurs once within one run), **only after the person confirms every change**, bound to the version shown (If-Match); only the parts that must change are rewritten, the rest is copied byte for byte; macro, encrypted, strict-OOXML and old binary files refused |
 | `file_copy` | files (OpenCloud) | copy a file or folder, also into another space, never over a name; **asks where others see the copy** |
 | `folder_create` | files (OpenCloud) | a new folder (same rule) |
 | `file_move` | files (OpenCloud) | rename/move within a space, never over a name; **asks where others see it** |

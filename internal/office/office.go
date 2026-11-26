@@ -169,14 +169,17 @@ func table(rows [][]string) string {
 	for _, r := range rows {
 		n = max(n, len(r))
 	}
+	// Explicit widths (twips, on a 16 cm text width): some apps loop or
+	// collapse on columns without a width.
+	wcol := strconv.Itoa(9000 / max(n, 1))
 	var b strings.Builder
-	b.WriteString(`<w:tbl><w:tblPr><w:tblStyle w:val="Table"/><w:tblW w:w="0" w:type="auto"/><w:tblBorders>`)
+	b.WriteString(`<w:tbl><w:tblPr><w:tblW w:w="9000" w:type="dxa"/><w:tblBorders>`)
 	for _, e := range []string{"top", "left", "bottom", "right", "insideH", "insideV"} {
 		b.WriteString(`<w:` + e + ` w:val="single" w:sz="4" w:space="0" w:color="999999"/>`)
 	}
-	b.WriteString(`</w:tblBorders></w:tblPr><w:tblGrid>`)
+	b.WriteString(`</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="108" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`)
 	for range n {
-		b.WriteString(`<w:gridCol/>`)
+		b.WriteString(`<w:gridCol w:w="` + wcol + `"/>`)
 	}
 	b.WriteString(`</w:tblGrid>`)
 	for i, r := range rows {
@@ -189,7 +192,7 @@ func table(rows [][]string) string {
 			if i == 0 && t != "" {
 				t = "**" + strings.Trim(t, "*") + "**"
 			}
-			b.WriteString(`<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>` + para("", t, 0) + "</w:tc>")
+			b.WriteString(`<w:tc><w:tcPr><w:tcW w:w="` + wcol + `" w:type="dxa"/></w:tcPr>` + para("", t, 0) + "</w:tc>")
 		}
 		b.WriteString("</w:tr>")
 	}
@@ -197,21 +200,21 @@ func table(rows [][]string) string {
 	return b.String()
 }
 
-// Docx: a Word document from Markdown (# to ### headings, paragraphs
-// separated by blank lines, "- " and "1. " lists, | tables |, **bold**,
-// *italic*). title, if given, becomes the document's title property.
-func Docx(md, title string) ([]byte, error) {
-	if len(md) > MaxText {
-		return nil, fmt.Errorf("content: at most %d MB", MaxText>>20)
-	}
-	if !utf8.ValidString(md) {
-		return nil, fmt.Errorf("content isn't UTF-8 text")
-	}
+// bodyOpts: how Markdown becomes body XML. In a new document lists use
+// numbering definitions; appended to an existing one they are plain
+// paragraphs ("• ", "1. "), and headings use the document's own heading
+// styles if it has them, else bold text.
+type bodyOpts struct {
+	listsAsText bool
+	headings    map[int]bool // nil: all heading styles exist
+}
+
+func mdBody(md string, o bodyOpts) (string, []string, error) {
 	lines := strings.Split(strings.ReplaceAll(md, "\r\n", "\n"), "\n")
 	var body strings.Builder
 	var paraBuf []string
 	nums := []string{}
-	curNum, listKind := 0, ""
+	curNum, listKind, count := 0, "", 0
 	flush := func() {
 		if len(paraBuf) > 0 {
 			body.WriteString(para("", strings.Join(paraBuf, " "), 0))
@@ -229,7 +232,11 @@ func Docx(md, title string) ([]byte, error) {
 			flush()
 			endList()
 			m := reHeading.FindStringSubmatch(l)
-			body.WriteString(para("Heading"+strconv.Itoa(len(m[1])), m[2], 0))
+			if o.headings != nil && !o.headings[len(m[1])] {
+				body.WriteString(para("", "**"+strings.Trim(m[2], "*")+"**", 0))
+			} else {
+				body.WriteString(para("Heading"+strconv.Itoa(len(m[1])), m[2], 0))
+			}
 		case strings.HasPrefix(strings.TrimSpace(l), "|"):
 			flush()
 			endList()
@@ -242,7 +249,7 @@ func Docx(md, title string) ([]byte, error) {
 			}
 			i--
 			if len(rows) > 1000 {
-				return nil, fmt.Errorf("a table has %d rows: at most 1000 (use an .xlsx for more)", len(rows))
+				return "", nil, fmt.Errorf("a table has %d rows: at most 1000 (use an .xlsx for more)", len(rows))
 			}
 			if len(rows) > 0 {
 				body.WriteString(table(rows))
@@ -256,18 +263,50 @@ func Docx(md, title string) ([]byte, error) {
 				kind, text = "number", reNumber.FindStringSubmatch(l)[1]
 			}
 			if kind != listKind {
-				// A new list: numbered lists start again at 1.
 				abs := map[string]string{"bullet": "0", "number": "1"}[kind]
 				nums = append(nums, abs)
-				curNum, listKind = len(nums), kind
+				curNum, listKind, count = len(nums), kind, 0
 			}
-			body.WriteString(para("ListParagraph", text, curNum))
+			count++
+			if o.listsAsText {
+				mark := "• "
+				if kind == "number" {
+					mark = strconv.Itoa(count) + ". "
+				}
+				body.WriteString(para("", mark+text, 0))
+			} else {
+				body.WriteString(para("ListParagraph", text, curNum))
+			}
 		default:
 			endList()
 			paraBuf = append(paraBuf, strings.TrimSpace(l))
 		}
 	}
 	flush()
+	// A table never ends the body: Word and LibreOffice expect a paragraph
+	// after it (before the section properties).
+	if strings.HasSuffix(body.String(), "</w:tbl>") {
+		body.WriteString("<w:p/>")
+	}
+	return body.String(), nums, nil
+}
+
+// Docx: a Word document from Markdown (# to ### headings, paragraphs
+// separated by blank lines, "- " and "1. " lists, | tables |, **bold**,
+// *italic*). title, if given, becomes the document's title property.
+func Docx(md, title string) ([]byte, error) {
+	if len(md) > MaxText {
+		return nil, fmt.Errorf("content: at most %d MB", MaxText>>20)
+	}
+	if !utf8.ValidString(md) {
+		return nil, fmt.Errorf("content isn't UTF-8 text")
+	}
+	bodyXML, nums, err := mdBody(md, bodyOpts{})
+	if err != nil {
+		return nil, err
+	}
+	var body strings.Builder
+	body.WriteString(bodyXML)
 	doc := xmlHead + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>` + body.String() +
 		`<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1134" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`
 	var nb strings.Builder
