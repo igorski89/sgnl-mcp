@@ -215,7 +215,7 @@ Sharing works for files and folders in your personal space, with one colleague a
 >
 > "In my packing list, change 'two shirts' to 'three shirts'."
 
-The assistant can save **new** text files, and change text files (Markdown, plain text, CSV, JSON, YAML) in your **personal** space. Before a change is written, a confirmation shows the file and each change (what is replaced, removed or added). If the file changed in the meantime, for example because you edited it yourself, nothing is written and the assistant has to read it again. The previous version is always kept: in your file app, open the file's **Versions** to see or restore it. It can't change files in shared spaces or documents like Word or PDF.
+The assistant can save **new** text files, and change text files (Markdown, plain text, CSV, JSON, YAML) in your **personal** space. Before a change is written, a confirmation shows the file and each change (what is replaced, removed or added). If the file changed in the meantime, for example because you edited it yourself, nothing is written and the assistant has to read it again. The previous version is always kept: in your file app, open the file's **Versions** to see or restore it. Text files in shared spaces can't be changed this way, and PDFs not at all; Word and Excel files: see below.
 
 > "Rename notes.md to Q4 notes.md and move it into the Q4 folder."
 >
