@@ -84,6 +84,8 @@ You can't remove *yourself* from the admin group or from `sgnl_users`, so nobody
   - The confirmation says **they lose access to EVERYTHING now** and asks you to **type their username**. Only the exact username counts.
 - *"Enable Hugo again."* restores access with their groups as before.
 
+Neither ends what other apps issued themselves: app passwords for mail apps, git tokens in Forgejo and app tokens in the file app keep working. For someone leaving, ask whoever runs the instance for the full suspend; each result reminds you.
+
 You can't log out or disable yourself here.
 
 ## The server's health

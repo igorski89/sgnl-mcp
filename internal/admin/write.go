@@ -47,6 +47,10 @@ func (t *Tools) freeBusyNote() string {
 	return " Calendar free/busy: shared with colleagues only after bin/sgnl-freebusy-sync runs for them (now, and once after their first login); tell whoever runs the instance."
 }
 
+// suspendNote: what logging out or disabling at the login server leaves
+// working (credentials other apps issue themselves).
+const suspendNote = "Mail app passwords, Forgejo git tokens and OpenCloud app tokens still work: for someone leaving, ask whoever runs the instance for the full suspend (bin/sgnl-user-suspend)."
+
 const vaultNote = "Password manager: its members and collections follow the groups only when bin/sgnl-vault-sync runs on an admin's laptop; tell whoever runs the instance."
 
 var (
@@ -573,7 +577,7 @@ func (t *Tools) logout(ctx context.Context, req *mcp.CallToolRequest, in UserOnl
 		return nil, ChangeOut{}, err
 	}
 	return nil, ChangeOut{Done: "all sessions and tokens ended", Username: in.Username,
-		Note: "Done with the person's confirmation. Apps that keep their own session may stay open until it runs out."}, nil
+		Note: "Done with the person's confirmation. Apps that keep their own session may stay open until it runs out. " + suspendNote}, nil
 }
 
 // ---- admin_disable / admin_enable
@@ -601,7 +605,7 @@ func (t *Tools) disable(ctx context.Context, req *mcp.CallToolRequest, in UserOn
 		return nil, ChangeOut{}, err
 	}
 	return nil, ChangeOut{Done: "disabled (every session and token ended)", Username: in.Username,
-		Note: "Done with the person's confirmation. " + vaultNote}, nil
+		Note: "Done with the person's confirmation. " + suspendNote + " " + vaultNote}, nil
 }
 
 func (t *Tools) enable(ctx context.Context, req *mcp.CallToolRequest, in UserOnlyIn) (*mcp.CallToolResult, ChangeOut, error) {

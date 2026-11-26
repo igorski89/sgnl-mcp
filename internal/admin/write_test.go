@@ -418,7 +418,7 @@ func TestDisableNeedsTheTypedUsername(t *testing.T) {
 	if txt, isErr := call(t, cs, "admin_disable", map[string]any{"username": "boss"}); !isErr || !strings.Contains(txt, "yourself") {
 		t.Errorf("self: %q", txt)
 	}
-	if txt, isErr := call(t, cs, "admin_disable", map[string]any{"username": "hugo"}); isErr || !f.users["hugo"].Disabled {
+	if txt, isErr := call(t, cs, "admin_disable", map[string]any{"username": "hugo"}); isErr || !f.users["hugo"].Disabled || !strings.Contains(txt, "bin/sgnl-user-suspend") {
 		t.Fatalf("disable: %q", txt)
 	}
 	q := (*asked)[0]
@@ -440,7 +440,7 @@ func TestLogoutAndSetupEmail(t *testing.T) {
 	if txt, isErr := call(t, cs, "admin_logout", map[string]any{"username": "boss"}); !isErr || !strings.Contains(txt, "yourself") {
 		t.Errorf("self: %q", txt)
 	}
-	if txt, isErr := call(t, cs, "admin_logout", map[string]any{"username": "hugo"}); isErr {
+	if txt, isErr := call(t, cs, "admin_logout", map[string]any{"username": "hugo"}); isErr || !strings.Contains(txt, "Mail app passwords, Forgejo git tokens and OpenCloud app tokens still work") {
 		t.Errorf("logout: %q", txt)
 	}
 	if txt, isErr := call(t, cs, "admin_setup_email", map[string]any{"username": "anna"}); isErr || !strings.Contains(txt, "anna@personal.example") {
