@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/igorski89/sgnl-mcp/internal/audit"
 	"io"
 	"net/http"
 	"net/url"
@@ -595,6 +596,11 @@ func (c *Client) Invoke(ctx context.Context, token string, s *Session, using []s
 	var r struct {
 		MethodResponses [][]json.RawMessage `json:"methodResponses"`
 	}
+	names := make([]string, len(calls))
+	for i, call := range calls {
+		names[i] = call.Method
+	}
+	audit.Methods(ctx, "jmap", names)
 	if err := c.do(ctx, token, "POST", s.APIURL, map[string]any{"using": using, "methodCalls": mc}, &r); err != nil {
 		return nil, err
 	}

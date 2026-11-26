@@ -267,6 +267,10 @@ Incoming mail and shared files are written by other people, and some of them may
 - **Never let a tool or setting answer confirmations for you.** Some apps can auto-approve requests; keep that switched off for SGNL.
 - **If something looks wrong** (a draft you didn't ask for, a strange file), tell your administrator.
 
+### What is recorded
+
+Each time the assistant uses SGNL, the gateway records who did what: which tool, which item (a mail's or file's id or path, a calendar), when, which AI app, what you were asked and what you answered, and whether it worked. It does not record what your mail, files or events say (those are kept only as fingerprints that can't be read back). Admins can look at this record; it's kept for 90 days unless your instance says otherwise.
+
 ## Which apps work?
 
 Everything that asks you first (sending, invitations, sharing, changing files, saving to shared spaces) needs an app that can show confirmations.

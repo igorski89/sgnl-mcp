@@ -156,6 +156,16 @@ You can't log out or disable yourself here.
 - **Size limits:** never below what the space already uses. When it's full, nobody can add files to it.
 - Not here: disabling or deleting a space (that's in the file app), personal spaces, sharing links.
 
+## The audit trail
+
+> "What did Hugo do through the assistant yesterday?"
+>
+> "Who changed the members of contact@ this week?"
+>
+> "Show me everything about that call."
+
+Every call through SGNL MCP is recorded: who, which tool, the question the person was asked, what they answered (and how quickly), and what was done. For people's own calls only who, what and the targets are kept, never the content of their mail or files. An admin change that can't be recorded isn't made.
+
 ## If something goes wrong
 
 - **"these tools are for admins only":** the login server doesn't have you in the admin group (any more).

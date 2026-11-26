@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/igorski89/sgnl-mcp/internal/audit"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -42,6 +43,8 @@ type Tools struct {
 	// MailWrite: the gateway's mail key that may also change accounts
 	// (read + update; Write set). nil: no mail changes. Needs Ask.
 	MailWrite *Stalwart
+	// Audit: the audit trail (nil: none).
+	Audit *audit.Store
 	// Files: the file app's project spaces, as the admin (nil: no
 	// files_space tools). Changes need Ask too.
 	Files *Files
@@ -75,6 +78,10 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Recent login attempts (successful or not, from which IP), newest first; optionally for one person."}, t.events)
 	add(t, s, &mcp.Tool{Name: "admin_audit", Annotations: ro,
 		Description: "Recent changes to accounts and groups (who changed what), newest first; optionally for one person."}, t.audit)
+	if t.Audit != nil {
+		add(t, s, &mcp.Tool{Name: "mcp_audit_search", Annotations: ro,
+			Description: "Search the gateway's audit trail: every tool call through SGNL MCP (people's and admins'), with the question shown, the answer given and what was done. By person, tool, time, call or target. People's own calls show only who, what and targets, never content."}, t.auditSearch)
+	}
 	if t.Grafana != nil {
 		add(t, s, &mcp.Tool{Name: "ops_alerts", Annotations: ro,
 			Description: "Alerts firing now (most severe first): name, severity, since when, summary; silenced ones listed after."}, t.alerts)
@@ -169,22 +176,57 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 		}
 		cur, ok := auth.Current(ctx)
 		who := cur.Username
+		login, _ := auth.Person(ctx)
 		if !ok {
-			login, _ := auth.Person(ctx)
 			who = login.Username
+		}
+		aw := audit.Who{Username: who, Sub: login.Sub, Client: login.Client()}
+		if req != nil && req.Session != nil {
+			aw.Session = req.Session.ID()
+		}
+		if req != nil && req.Extra != nil {
+			aw.IP = audit.IPFrom(req.Extra.Header)
 		}
 		l := slog.With("admin_tool", tool.Name, "user", who, "args", fmt.Sprint(in))
 		if !ok {
 			l.Warn("admin call refused", "outcome", "not checkable")
+			t.Audit.Refused(ctx, audit.Admin, tool.Name, aw, "not checkable")
 			return nil, zero, fmt.Errorf("couldn't check with the login server whether you're an admin: try again in a moment")
 		}
 		if !slices.ContainsFunc(t.admins(), func(g string) bool { return slices.Contains(cur.Groups, g) }) {
 			l.Warn("admin call refused", "outcome", "not an admin")
+			t.Audit.Refused(ctx, audit.Admin, tool.Name, aw, "not an admin")
 			return nil, zero, fmt.Errorf("these tools are for admins only")
+		}
+		readOnly := tool.Annotations != nil && tool.Annotations.ReadOnlyHint
+		ctx, rec, aerr := t.Audit.Begin(ctx, audit.Admin, tool.Name, readOnly, aw, in)
+		if aerr != nil {
+			l.Error("admin call refused", "outcome", "not auditable", "error", aerr.Error())
+			return nil, zero, aerr
 		}
 		ctx, cancel := context.WithTimeout(ctx, callTimeout)
 		defer cancel()
+		defer func() {
+			if p := recover(); p != nil {
+				rec.Done(ctx, "panic", fmt.Sprint(p), nil)
+				panic(p)
+			}
+		}()
 		res, out, err := h(ctx, req, in)
+		outcome := "ok"
+		switch {
+		case errors.Is(err, errDecl):
+			outcome = "declined"
+		case err != nil:
+			outcome = "error"
+		case res != nil && len(res.InputRequests) > 0:
+			outcome = "asked"
+		}
+		et := ""
+		if err != nil {
+			et = err.Error()
+		}
+		rec.Done(ctx, outcome, et, out)
 		l = l.With("ms", time.Since(start).Milliseconds())
 		switch {
 		case errors.Is(err, errDecl):

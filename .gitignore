@@ -1,2 +1,4 @@
 /sgnl-mcp
 /dist/
+*.db
+*.db-*

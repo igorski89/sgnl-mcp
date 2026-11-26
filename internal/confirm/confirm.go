@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/igorski89/sgnl-mcp/internal/audit"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -107,14 +108,17 @@ func (a *Asker) AskTyped(ctx context.Context, req *mcp.CallToolRequest, message,
 
 func (a *Asker) ask(ctx context.Context, req *mcp.CallToolRequest, message, bind, field, want string) (res *mcp.CallToolResult, ok bool, err error) {
 	if req == nil || req.Session == nil || req.Params == nil {
+		_ = audit.Answered(ctx, "", "no-elicitation", -1)
 		return nil, false, ErrNoConfirm
 	}
 	c, _ := auth.Person(ctx)
 	if len(a.Clients) > 0 && !slices.Contains(a.Clients, c.Client()) {
 		slog.Warn("confirmation refused: client not trusted to ask the person", "user", c.Username, "client", c.Client())
+		_ = audit.Answered(ctx, "", "untrusted-client", -1)
 		return nil, false, ErrUntrustedClient
 	}
 	if p := req.Session.InitializeParams(); p == nil || p.Capabilities == nil || p.Capabilities.Elicitation == nil {
+		_ = audit.Answered(ctx, "", "no-elicitation", -1)
 		return nil, false, ErrNoConfirm
 	}
 	who := c.Username
@@ -126,19 +130,25 @@ func (a *Asker) ask(ctx context.Context, req *mcp.CallToolRequest, message, bind
 			schema = map[string]any{"type": "object", "required": []string{field},
 				"properties": map[string]any{field: map[string]any{"type": "string", "title": field}}}
 		}
+		st := state(req.Params.Name, req.Params.Arguments, who, bind, until)
+		audit.Asked(ctx, audit.DialogID(st), message)
 		return &mcp.CallToolResult{
 			InputRequests: mcp.InputRequestMap{"confirm": &mcp.ElicitParams{Message: message, RequestedSchema: schema}},
-			RequestState:  state(req.Params.Name, req.Params.Arguments, who, bind, until),
+			RequestState:  st,
 		}, false, nil
 	}
+	dialog := audit.DialogID(req.Params.RequestState)
 	ts, _, _ := strings.Cut(req.Params.RequestState, ".")
 	until, perr := strconv.ParseInt(ts, 10, 64)
 	expect := state(req.Params.Name, req.Params.Arguments, who, bind, until)
 	if perr != nil || !hmac.Equal([]byte(expect), []byte(req.Params.RequestState)) {
+		_ = audit.Answered(ctx, dialog, "mismatch", -1)
 		return nil, false, fmt.Errorf("the confirmation doesn't match this request, or what it shows has changed since: ask again")
 	}
 	now := Now().UnixMilli()
+	asked := until - TTL.Milliseconds()
 	if now > until {
+		_ = audit.Answered(ctx, dialog, "expired", now-asked)
 		return nil, false, fmt.Errorf("the confirmation expired: ask again")
 	}
 	action := "none"
@@ -150,6 +160,7 @@ func (a *Asker) ask(ctx context.Context, req *mcp.CallToolRequest, message, bind
 	if ok && field != "" {
 		typed, _ := r.Content[field].(string)
 		if strings.TrimSpace(typed) != want {
+			_ = audit.Answered(ctx, dialog, "typed-mismatch", now-asked)
 			slog.Info("person answered", "tool", req.Params.Name, "user", who, "action", action, "outcome", "typed text didn't match")
 			return nil, false, fmt.Errorf("what was typed isn't %q: nothing was done. Ask again if it was a typo", want)
 		}
@@ -157,12 +168,16 @@ func (a *Asker) ask(ctx context.Context, req *mcp.CallToolRequest, message, bind
 	// A yes faster than anyone can read the question came from the client,
 	// not the person (some clients answer such questions by themselves).
 	// Clients the person runs without approvals on purpose are exempt.
-	asked := until - TTL.Milliseconds()
 	if ok && now-asked < MinAnswer.Milliseconds() && !slices.Contains(a.FastOK, c.Client()) {
+		_ = audit.Answered(ctx, dialog, "too-fast", now-asked)
 		slog.Warn("confirmation refused: answered too fast to be a person", "tool", req.Params.Name, "user", who, "client", c.Client(), "ms", now-asked)
 		return nil, false, fmt.Errorf("the answer came back faster than a person can read the question, so the app likely answered by itself: nothing was done. Ask the person to try again and read the question")
 	}
 	slog.Info("person answered", "tool", req.Params.Name, "user", who, "action", action,
 		"outcome", map[bool]string{true: "accepted", false: "declined"}[ok])
+	// An accepted change only goes on once the answer is on record.
+	if err := audit.Answered(ctx, dialog, action, now-asked); err != nil {
+		return nil, false, err
+	}
 	return nil, ok, nil
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/igorski89/sgnl-mcp/internal/admin"
+	"github.com/igorski89/sgnl-mcp/internal/audit"
 	"log/slog"
 	"time"
 
@@ -41,6 +42,8 @@ type Tools struct {
 	TrashDays int
 	// FilesTrashDays: the same for the file app's trash bin (0: none).
 	FilesTrashDays int
+	// Audit: the audit trail (nil: none).
+	Audit *audit.Store
 	// Self: the person's own login-server account (sessions, logging out
 	// everywhere); nil: no my_sessions / logout_everywhere.
 	Self *admin.Self
@@ -227,6 +230,7 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 			ctx = withCalAccount(ctx, a.calAccount())
 		}
 		c, _ := auth.Person(ctx)
+		who := whoOf(req, c)
 		l := slog.With("tool", tool.Name, "kind", kind, "user", c.Username)
 		if a := accountOf(ctx); a != "" {
 			l = l.With("account", a)
@@ -241,20 +245,38 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 			cur, ok := auth.Current(ctx)
 			if !ok {
 				l.Warn("tool refused", "outcome", "access not checkable")
+				t.Audit.Refused(ctx, audit.User, tool.Name, who, "access not checkable")
 				return nil, zero, fmt.Errorf("couldn't check with the login server whether SGNL MCP is switched on for you: try again in a moment")
 			}
 			if !t.Access.Allows(cur) {
 				l.Warn("tool refused", "outcome", "no access")
+				t.Audit.Refused(ctx, audit.User, tool.Name, who, "no access")
 				return nil, zero, fmt.Errorf("SGNL MCP isn't switched on for you: ask an admin")
 			}
 		}
 		if err := t.limits.allow(c.Username, kind); err != nil {
 			l.Warn("tool refused", "outcome", "rate limited")
+			t.Audit.Refused(ctx, audit.User, tool.Name, who, "rate limited")
 			return nil, zero, err
+		}
+		ctx, rec, aerr := t.Audit.Begin(ctx, audit.User, tool.Name, kind == kindRead, who, in)
+		if aerr != nil {
+			l.Error("tool refused", "outcome", "not auditable", "error", aerr.Error())
+			return nil, zero, aerr
 		}
 		ctx, cancel := context.WithTimeout(ctx, callTimeout)
 		defer cancel()
-		res, out, err := h(ctx, req, in)
+		var res *mcp.CallToolResult
+		var out Out
+		var err error
+		defer func() {
+			if p := recover(); p != nil {
+				rec.Done(ctx, "panic", fmt.Sprint(p), nil)
+				panic(p)
+			}
+		}()
+		res, out, err = h(ctx, req, in)
+		rec.Done(ctx, outcomeOf(res, err), errText(err), out)
 		l = l.With("ms", time.Since(start).Milliseconds())
 		switch {
 		case err != nil:
@@ -269,6 +291,37 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 }
 
 const callTimeout = 90 * time.Second
+
+// whoOf: the caller, for the audit trail (never the token or headers).
+func whoOf(req *mcp.CallToolRequest, c auth.Claims) audit.Who {
+	w := audit.Who{Username: c.Username, Sub: c.Sub, Client: c.Client()}
+	if req != nil && req.Session != nil {
+		w.Session = req.Session.ID()
+	}
+	if req != nil && req.Extra != nil {
+		w.IP = audit.IPFrom(req.Extra.Header)
+	}
+	return w
+}
+
+func outcomeOf(res *mcp.CallToolResult, err error) string {
+	switch {
+	case err != nil:
+		return "error"
+	case res != nil && res.InputRequests != nil:
+		return "asked"
+	case res != nil && res.IsError:
+		return "error"
+	}
+	return "ok"
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
 
 func ptr[T any](v T) *T { return &v }
 

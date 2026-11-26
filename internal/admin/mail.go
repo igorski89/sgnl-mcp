@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/igorski89/sgnl-mcp/internal/audit"
 	"io"
 	"maps"
 	"net/http"
@@ -152,6 +153,11 @@ func (m *Stalwart) call(ctx context.Context, calls ...mcall) ([]map[string]any, 
 	if err != nil {
 		return nil, err
 	}
+	names := make([]string, len(calls))
+	for i, c := range calls {
+		names[i] = c.method
+	}
+	audit.Methods(ctx, "stalwart-admin", names)
 	var mc [][]any
 	for i, c := range calls {
 		a := map[string]any{}

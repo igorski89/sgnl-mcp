@@ -182,6 +182,41 @@ nothing but `memberGroupIds` or `quotas` (credentials, roles, permissions
 and aliases keep the full check). SGNL runs a Stalwart build with exactly that patch; on stock Stalwart,
 leave the write key unset.
 
+## Audit trail
+
+With `SGNL_MCP_AUDIT_DB` (e.g. `/data/audit.db`, a volume writable by the
+container's user) the gateway keeps a durable record of every tool call on
+both connectors in a separate SQLite file (`modernc.org/sqlite`, pure Go;
+WAL, busy timeout, `synchronous=FULL`). Rows are only inserted, and deleted
+when older than the retention (`SGNL_MCP_AUDIT_RETAIN_ADMIN`, default
+`365d`; `SGNL_MCP_AUDIT_RETAIN_USER`, default `90d`; purged at start and
+daily). Per call: `called` (who: username, sub, AI app client, session,
+source IP as the proxy saw it; the arguments) → `asked` (the question) →
+`answered` (accept, decline, expired, too fast, typed mismatch, untrusted
+client…, with the time to answer) → `backend` (each request made: method,
+host, path without query, status; JMAP method names) → `done` (outcome,
+error, a summary of the result). Refused callers get rows too (at most 20
+per person per hour). Never tokens, headers or keys.
+
+- **Levels** per connector, `SGNL_MCP_AUDIT_ADMIN` / `SGNL_MCP_AUDIT_USER`:
+  `off`, `meta` (who, targets, sizes; every other argument as SHA-256 and
+  length; the question as a hash for people's own calls), `full` (also the
+  arguments as JSON, each field capped at 64 KB, and the question's text).
+  Defaults: admin `full`, user `meta`. Meta is default-deny: the fields
+  stored in clear are listed in `internal/tools/audit_fields.go` and a test
+  fails when a tool has a field in neither list.
+- **Failure:** an admin change whose `called` row, or whose accepting
+  `answered` row, can't be written doesn't happen (fail closed); admin reads
+  and people's calls go on (fail open), unless `SGNL_MCP_AUDIT_USER_STRICT`
+  closes people's changes too. Every failure logs `audit write failed`
+  (alert on it); `SGNL_MCP_METRICS_ADDR` optionally serves Prometheus
+  metrics on an internal address.
+- **Reading:** `mcp_audit_search` on the admin connector (by person, tool,
+  time, call, target), itself audited. People's own calls show only the
+  meta record; the target filter never searches their full arguments.
+- Calls rejected by the MCP SDK before reaching a tool (arguments that
+  don't match the tool's schema) aren't recorded.
+
 ## How it works
 
 - **Login:** the gateway is an OAuth 2.1 resource server. It publishes
