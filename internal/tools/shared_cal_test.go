@@ -62,3 +62,27 @@ func TestSharedCalendars(t *testing.T) {
 		t.Error("own calendar asked or failed")
 	}
 }
+
+func TestAvailability(t *testing.T) {
+	f := &fakeCal{events: map[string]map[string]any{}}
+	cs := inviteSession(t, f, nil)
+	txt, isErr := callTool(t, cs, "availability_get", map[string]any{"people": []string{"hugo", "anna"}, "from": "2026-12-03T08:00", "to": "2026-12-03T12:30"})
+	if isErr {
+		t.Fatal(txt)
+	}
+	// Local times; hugo's busy block; anna unknown (no share), never "free".
+	if !strings.Contains(txt, `"busy":[{"end":"2026-12-03T11:00","start":"2026-12-03T10:00","status":"confirmed"}]`) ||
+		!strings.Contains(txt, `"times_in":"Europe/Berlin"`) || !strings.Contains(txt, `"error":"unknown: they haven't shared their calendar`) {
+		t.Errorf("availability: %s", txt)
+	}
+	if len(f.avail) != 1 || f.avail[0]["utcStart"] != "2026-12-03T07:00:00Z" || f.avail[0]["utcEnd"] != "2026-12-03T11:30:00Z" {
+		t.Errorf("asked: %v", f.avail)
+	}
+	// A whole last day.
+	if _, isErr := callTool(t, cs, "availability_get", map[string]any{"people": []string{"hugo"}, "from": "2026-12-03", "to": "2026-12-03"}); isErr || f.avail[1]["utcEnd"] != "2026-12-03T23:00:00Z" {
+		t.Errorf("day: %v", f.avail[1])
+	}
+	if txt, isErr := callTool(t, cs, "availability_get", map[string]any{"people": []string{"hugo"}, "from": "3 Dec"}); !isErr || !strings.Contains(txt, "YYYY-MM-DDTHH:MM") {
+		t.Errorf("bad from: %s", txt)
+	}
+}

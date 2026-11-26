@@ -27,6 +27,8 @@ type fakeCal struct {
 	// shared: other calendar accounts the session lists (S: anna's, may
 	// add; R: board's, read only), with their events.
 	shared map[string]map[string]map[string]any
+	// avail: Principal/getAvailability calls (their args)
+	avail []map[string]any
 }
 
 func (f *fakeCal) serve(t *testing.T) *httptest.Server {
@@ -107,6 +109,34 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 					}
 				}
 				res = map[string]any{"list": list, "state": "s1"}
+			case "Principal/query":
+				q, _ := args["filter"].(map[string]any)["text"].(string)
+				ids := []string{}
+				for _, p := range []string{"hugo", "anna"} {
+					if strings.Contains(p, strings.ToLower(q)) {
+						ids = append(ids, p)
+					}
+				}
+				lastIDs = nil
+				for _, i := range ids {
+					lastIDs = append(lastIDs, i)
+				}
+				res = map[string]any{"ids": ids}
+			case "Principal/get":
+				list := []any{}
+				for _, i := range lastIDs {
+					id := i.(string)
+					cal := map[string]any{"accountId": nil, "mayGetAvailability": true}
+					if id == "hugo" { // hugo shares free/busy with the person
+						cal["accountId"] = "H"
+					}
+					list = append(list, map[string]any{"id": id, "name": id + "@co.example", "email": id + "@co.example", "type": "individual",
+						"capabilities": map[string]any{jmap.Calendars: cal}})
+				}
+				res = map[string]any{"list": list}
+			case "Principal/getAvailability":
+				f.avail = append(f.avail, args)
+				res = map[string]any{"list": []any{map[string]any{"utcStart": "2026-12-03T09:00:00Z", "utcEnd": "2026-12-03T10:00:00Z", "busyStatus": "confirmed"}}}
 			case "Email/get":
 				res = map[string]any{"list": f.mails}
 			case "CalendarEvent/parse":

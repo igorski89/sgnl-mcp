@@ -443,8 +443,19 @@ func (t *Tools) eventCreate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 
 type AvailabilityIn struct {
 	People []string `json:"people" jsonschema:"colleagues: names or email addresses (max 10)"`
-	From   string   `json:"from,omitempty" jsonschema:"first day YYYY-MM-DD (default today)"`
-	To     string   `json:"to,omitempty" jsonschema:"last day YYYY-MM-DD (default from + 7 days)"`
+	From   string   `json:"from,omitempty" jsonschema:"start: a day YYYY-MM-DD or a time YYYY-MM-DDTHH:MM, local (default today)"`
+	To     string   `json:"to,omitempty" jsonschema:"end: a last day YYYY-MM-DD (whole day) or a time YYYY-MM-DDTHH:MM (default from + 7 days)"`
+}
+
+// availWhen: a day (its start) or a local time; day says which.
+func (t *Tools) availWhen(what, v string) (tm time.Time, day bool, err error) {
+	if d, err := time.ParseInLocation("2006-01-02T15:04", v, t.loc()); err == nil {
+		return d, false, nil
+	}
+	if d, err := time.ParseInLocation("2006-01-02", v, t.loc()); err == nil {
+		return d, true, nil
+	}
+	return time.Time{}, false, fmt.Errorf("%s: use YYYY-MM-DD or YYYY-MM-DDTHH:MM", what)
 }
 
 type Busy struct {
@@ -465,7 +476,10 @@ type AvailabilityOut struct {
 	To     string               `json:"to"`
 	Zone   string               `json:"times_in"`
 	People []PersonAvailability `json:"people"`
+	Note   string               `json:"note"`
 }
+
+const availNote = "Only busy times from calendars each colleague shares with you (at least free/busy) are seen; with no share, nothing about them can be known. Never what the meetings are."
 
 var principalUsing = []string{jmap.Core, jmap.Principals, jmap.Availability, jmap.Calendars}
 
@@ -500,19 +514,22 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 	now := time.Now().In(t.loc())
 	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, t.loc())
 	if in.From != "" {
-		d, err := time.ParseInLocation("2006-01-02", in.From, t.loc())
+		d, _, err := t.availWhen("from", in.From)
 		if err != nil {
-			return nil, AvailabilityOut{}, fmt.Errorf("from: use YYYY-MM-DD")
+			return nil, AvailabilityOut{}, err
 		}
 		from = d
 	}
 	to := from.AddDate(0, 0, 7)
 	if in.To != "" {
-		d, err := time.ParseInLocation("2006-01-02", in.To, t.loc())
+		d, day, err := t.availWhen("to", in.To)
 		if err != nil {
-			return nil, AvailabilityOut{}, fmt.Errorf("to: use YYYY-MM-DD")
+			return nil, AvailabilityOut{}, err
 		}
-		to = d.AddDate(0, 0, 1)
+		to = d
+		if day {
+			to = d.AddDate(0, 0, 1) // the whole last day
+		}
 	}
 	if !to.After(from) || to.Sub(from) > 31*24*time.Hour {
 		return nil, AvailabilityOut{}, fmt.Errorf("range: at most 31 days")
@@ -529,7 +546,13 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if acct == "" {
 		acct = s.PrimaryAccounts[jmap.Mail]
 	}
-	out := AvailabilityOut{From: from.Format("2006-01-02"), To: to.AddDate(0, 0, -1).Format("2006-01-02"), Zone: "UTC", People: []PersonAvailability{}}
+	out := AvailabilityOut{From: from.Format("2006-01-02T15:04"), To: to.Format("2006-01-02T15:04"), Zone: t.loc().String(), People: []PersonAvailability{}, Note: availNote}
+	local := func(u string) string {
+		if tm, err := time.Parse(time.RFC3339, u); err == nil {
+			return tm.In(t.loc()).Format("2006-01-02T15:04")
+		}
+		return u
+	}
 	for _, who := range in.People {
 		pa := PersonAvailability{Person: who, Busy: []Busy{}}
 		ps, err := t.findPrincipals(ctx, tok, s, acct, who, 2)
@@ -543,9 +566,12 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 		default:
 			p := ps[0]
 			pa.Email = p.Email
+			// The mail server names a colleague's account only once they share
+			// something with the person; without a share it answers "no busy
+			// times", which must not read as "free".
 			calAcct := p.Capabilities[jmap.Calendars].AccountID
 			if calAcct == "" {
-				pa.Error = "no shared calendar"
+				pa.Error = "unknown: they haven't shared their calendar (not even free/busy) with you, so their busy times can't be seen. Ask them to share free/busy in their calendar app"
 				break
 			}
 			r, err := t.JMAP.Invoke(ctx, tok, s, principalUsing, jmap.Call{Method: "Principal/getAvailability", Args: map[string]any{
@@ -563,7 +589,7 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 			}
 			_ = json.Unmarshal(r[0], &got)
 			for _, b := range got.List {
-				pa.Busy = append(pa.Busy, Busy{b.UTCStart, b.UTCEnd, b.BusyStatus})
+				pa.Busy = append(pa.Busy, Busy{local(b.UTCStart), local(b.UTCEnd), b.BusyStatus})
 			}
 		}
 		out.People = append(out.People, pa)
