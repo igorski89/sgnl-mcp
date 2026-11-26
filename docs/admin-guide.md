@@ -126,7 +126,10 @@ You can't log out or disable yourself here.
 > "Take Hugo out of alerts@."
 >
 > "Give the contact@ mailbox a 5 GB limit." / "No limit for Hugo's mailbox."
+>
+> "Create a shared mailbox sales@ called 'ACME Sales' with Anna and Ben."
 
+- **A new shared mailbox** (where your instance has it switched on): *"Create a shared mailbox sales@ called 'ACME Sales' with Anna and Ben."* The sender name is what recipients see on mail sent as it. Refused for an address already in use (also switched-off aliases), reserved names (postmaster@, abuse@, admin…) and anyone's login name (it would block their mail). If mail to that address now lands in the catch-all mailbox, the confirmation says so. It can't be deleted or renamed here: ask whoever runs the instance.
 - Each asks you first. The confirmation starts with the mailbox and the effect, e.g. *Add hugo to contact@your-company: they read and can send as contact@your-company?*
 - **Members:** removing someone takes away their access to the shared mailbox and its mail; the mailbox and its mail stay, and they can be added again. The last member can't be removed: add someone else first.
 - **Aliases (extra addresses) aren't changed here:** an alias also decides whose account a login lands in, so a wrong one could put someone into another person's account. Ask whoever runs the instance.

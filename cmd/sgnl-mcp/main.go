@@ -51,6 +51,8 @@
 //	                        (management JMAP on the SGNL_MCP_JMAP_URL host; never content)
 //	SGNL_MCP_STALWART_WRITE_API_KEY a second key that may also update accounts: mail_group_member_add/
 //	                        _remove, mail_quota_set, each confirmed (never aliases)
+//	SGNL_MCP_MAIL_GROUP_CREATE set (1): also mail_group_create (a new shared mailbox); needs
+//	                        the mail server's group-create exemption and sysAccountCreate
 //	SGNL_MCP_MAIL_PROTECTED mail accounts never changed (default mcp-gateway,ses-relay)
 //	SGNL_MCP_ADMIN_SPACES   set (1), with SGNL_MCP_OPENCLOUD_URL: files_spaces and the project
 //	                        space changes (create, members, quota) on the admin endpoint,
@@ -279,6 +281,7 @@ func main() {
 			if wkey := os.Getenv("SGNL_MCP_STALWART_WRITE_API_KEY"); wkey != "" {
 				at.MailWrite = &admin.Stalwart{Base: at.Mail.Base, Key: wkey, Write: true, HTTP: &http.Client{Timeout: 20 * time.Second}}
 				at.MailProtected = list("SGNL_MCP_MAIL_PROTECTED")
+				at.MailGroupCreate = os.Getenv("SGNL_MCP_MAIL_GROUP_CREATE") != ""
 				at.Ask = t.Asker()
 				what += "; changes to shared-mailbox members and mailbox size limits, each only after the admin confirms in their app"
 			}

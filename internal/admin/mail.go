@@ -43,7 +43,7 @@ type Stalwart struct {
 var mailReads = map[string][]string{
 	"x:Account/query":       nil,
 	"x:Account/get":         {"id", "@type", "name", "domainId", "emailAddress", "description", "memberGroupIds", "aliases", "quotas", "usedDiskQuota"},
-	"x:Domain/get":          {"id", "name"},
+	"x:Domain/get":          {"id", "name", "catchAllAddress"},
 	"x:QueuedMessage/query": nil,
 	"x:QueuedMessage/get":   {"id", "createdAt", "nextRetry", "nextNotify", "returnPath", "recipients", "size", "envId", "priority", "flags"},
 }

@@ -45,6 +45,9 @@ type Tools struct {
 	// Files: the file app's project spaces, as the admin (nil: no
 	// files_space tools). Changes need Ask too.
 	Files *Files
+	// MailGroupCreate: offer mail_group_create (needs the mail server's
+	// group-create exemption and sysAccountCreate on the write key).
+	MailGroupCreate bool
 	// MailProtected: mail accounts never changed here (machine accounts;
 	// default mcp-gateway, ses-relay). People also need a login account.
 	MailProtected []string
@@ -109,6 +112,10 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Add a person to a shared mailbox (e.g. contact@): they read it and can send as it." + asks}, t.memberAdd)
 		add(t, s, &mcp.Tool{Name: "mail_group_member_remove", Annotations: d,
 			Description: "Remove a person from a shared mailbox: they lose access to it and its mail (the mailbox and mail stay). Never its last member." + asks}, t.memberRemove)
+		if t.UserDomain != "" && t.MailGroupCreate {
+			add(t, s, &mcp.Tool{Name: "mail_group_create", Annotations: w,
+				Description: "Create a new shared mailbox (e.g. sales@) with a sender name and its first members, who read it and can send as it. Refused for addresses in use, reserved names and people's login names. It can't be deleted or renamed here." + asks}, t.groupCreateMail)
+		}
 		add(t, s, &mcp.Tool{Name: "mail_quota_set", Annotations: w,
 			Description: "Set a mailbox's size limit (e.g. 5 GB, or 'no limit'); never below what it already uses." + asks}, t.quotaSet)
 	}

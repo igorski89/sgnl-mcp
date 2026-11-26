@@ -158,6 +158,15 @@ only), `/graph/v1beta1/drives/{id}/root/{invite,permissions}` (one
 recipient and one space role per call) and user/group lookup: never a
 DELETE of a drive (disable/purge), never other drive properties.
 
+`mail_group_create` (with `SGNL_MCP_MAIL_GROUP_CREATE=1`): a new shared
+mailbox (a Stalwart Group: name, domain, sender name only; no aliases,
+roles or quotas) and its first members, confirmed. Refused: addresses in
+use (including disabled aliases), reserved names, any login username (an
+OIDC login for a group's address is refused, so it would block that
+person's mail). Needs `sysAccountCreate` on the write key and the mail
+server's exemption of exactly such group creates from its grant check. Not
+offered: delete (it deletes the mail) and rename.
+
 **Stalwart 1.1.1 refuses these changes as shipped:** before any account
 update it requires the caller to hold every permission of the target
 account (`validate_account_access`), i.e. the user role's mail

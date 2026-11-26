@@ -33,12 +33,52 @@ import (
 // into it), so aliases are changed only by the operator, on the server.
 var setProps = []string{"memberGroupIds", "quotas"}
 
+// groupFields: all a new shared mailbox (a Stalwart Group) is created
+// with: no aliases, roles, permissions or quotas (the mail server's fork
+// exempts exactly that from its grant check).
+var groupFields = []string{"@type", "name", "domainId", "description"}
+
+// checkCreate: x:Account/set creating exactly one Group of groupFields,
+// and nothing else in the same call.
+func checkCreate(c mcall) error {
+	for k := range c.args {
+		if k != "create" {
+			return fmt.Errorf("x:Account/set: a create comes alone, not with %s", k)
+		}
+	}
+	cr, _ := c.args["create"].(map[string]any)
+	if len(cr) != 1 {
+		return fmt.Errorf("x:Account/set: exactly one create")
+	}
+	for _, v := range cr {
+		g, _ := v.(map[string]any)
+		if g["@type"] != "Group" {
+			return fmt.Errorf("x:Account/set: only a Group (shared mailbox) is ever created")
+		}
+		for k, fv := range g {
+			if !slices.Contains(groupFields, k) {
+				return fmt.Errorf("x:Account/set: a new group never gets %s", k)
+			}
+			if _, ok := fv.(string); !ok {
+				return fmt.Errorf("x:Account/set: %s isn't text", k)
+			}
+		}
+		if g["name"] == nil || g["domainId"] == nil {
+			return fmt.Errorf("x:Account/set: a group needs a name and domain")
+		}
+	}
+	return nil
+}
+
 // checkSet: x:Account/set with exactly one update of setProps, each a
-// whole object of the expected shape; nothing else (no create, destroy,
-// pointer patch).
+// whole object of the expected shape, or checkCreate; nothing else (no
+// destroy, pointer patch).
 func checkSet(c mcall) error {
 	if c.method != "x:Account/set" {
 		return fmt.Errorf("the gateway doesn't call %s", c.method)
+	}
+	if _, ok := c.args["create"]; ok {
+		return checkCreate(c)
 	}
 	for k := range c.args {
 		if k != "update" {
@@ -392,4 +432,162 @@ func (t *Tools) quotaSet(ctx context.Context, req *mcp.CallToolRequest, in Quota
 		return nil, MailChangeOut{}, err
 	}
 	return nil, MailChangeOut{Done: "limit set to " + want, Mailbox: t.afterChange(ctx, v.Name), Note: "Done with the admin's confirmation."}, nil
+}
+
+// ---- mail_group_create: a new shared mailbox, with its first members.
+
+type MailGroupCreateIn struct {
+	Name       string   `json:"name" jsonschema:"the address before @, e.g. sales (the domain is the company's)"`
+	SenderName string   `json:"sender_name" jsonschema:"the name recipients see on mail sent as it, e.g. ACME Sales"`
+	Members    []string `json:"members" jsonschema:"people who read it and send as it: usernames or addresses (1-20)"`
+}
+
+// reserved: addresses mail systems and people expect to mean something.
+var reserved = []string{"postmaster", "abuse", "hostmaster", "webmaster", "mailer-daemon", "noreply", "no-reply", "root", "security", "support-noreply"}
+
+// taken: who already receives mail at addr (account names and addresses,
+// every alias, enabled or not), "" if nobody.
+func (d *mailDir) taken(addr string) string {
+	addr = strings.ToLower(addr)
+	for _, a := range d.raw {
+		dn := d.domains[str(a, "domainId")]
+		if strings.ToLower(str(a, "emailAddress")) == addr || strings.ToLower(str(a, "name")+"@"+dn) == addr {
+			return str(a, "name")
+		}
+		var als []any
+		switch x := a["aliases"].(type) {
+		case []any:
+			als = x
+		case map[string]any:
+			for _, v := range x {
+				als = append(als, v)
+			}
+		}
+		for _, x := range als {
+			al, _ := x.(map[string]any)
+			ad := d.domains[str(al, "domainId")]
+			if ad == "" {
+				ad = dn
+			}
+			n := strings.ToLower(str(al, "name"))
+			if n+"@"+strings.ToLower(ad) == addr || n == addr {
+				return str(a, "name")
+			}
+		}
+	}
+	return ""
+}
+
+func (t *Tools) groupCreateMail(ctx context.Context, req *mcp.CallToolRequest, in MailGroupCreateIn) (*mcp.CallToolResult, MailChangeOut, error) {
+	name := strings.ToLower(strings.TrimSpace(in.Name))
+	if err := validName("name", name); err != nil {
+		return nil, MailChangeOut{}, err
+	}
+	if slices.Contains(reserved, name) || strings.HasPrefix(name, "admin") || slices.Contains(t.protected(), name) {
+		return nil, MailChangeOut{}, fmt.Errorf("%s@ is reserved: choose another name", name)
+	}
+	sender, err := plain("sender_name", in.SenderName, 60)
+	if err != nil {
+		return nil, MailChangeOut{}, err
+	}
+	if len(in.Members) < 1 || len(in.Members) > 20 {
+		return nil, MailChangeOut{}, fmt.Errorf("members: 1 to 20 people (someone has to read it)")
+	}
+	// A login of that name (even without a mailbox yet, even invited or
+	// disabled): a group would block their mail login.
+	if _, err := t.lookup(ctx, name); err == nil {
+		return nil, MailChangeOut{}, fmt.Errorf("%s is someone's login name: a shared mailbox of that name would block their mail", name)
+	} else if !strings.HasPrefix(err.Error(), "no account") {
+		return nil, MailChangeOut{}, err
+	}
+	d, err := t.mailDir(ctx)
+	if err != nil {
+		return nil, MailChangeOut{}, err
+	}
+	dom := strings.ToLower(t.UserDomain)
+	did := ""
+	for id, n := range d.domains {
+		if strings.EqualFold(n, dom) {
+			did = id
+		}
+	}
+	if did == "" {
+		return nil, MailChangeOut{}, fmt.Errorf("the mail server has no domain %s", dom)
+	}
+	addr := name + "@" + dom
+	if who := d.taken(addr); who != "" {
+		return nil, MailChangeOut{}, fmt.Errorf("%s is already in use (by %s)", addr, who)
+	}
+	var people []*MailAccount
+	var raws []map[string]any
+	for _, m := range in.Members {
+		p, raw, err := t.person(ctx, d, m)
+		if err != nil {
+			return nil, MailChangeOut{}, err
+		}
+		if slices.ContainsFunc(people, func(x *MailAccount) bool { return x.Name == p.Name }) {
+			continue
+		}
+		people = append(people, p)
+		raws = append(raws, raw)
+	}
+	names := make([]string, len(people))
+	bind := addr + "|" + sender
+	for i, p := range people {
+		names[i] = p.Name
+		bind += "|" + fp(raws[i], "memberGroupIds")
+	}
+	q := fmt.Sprintf("Create the shared mailbox %s (%q) with members %s: they read it and can send as %s?", addr, sender, strings.Join(names, ", "), addr)
+	if ca := t.catchAll(ctx, did); ca != "" && !strings.EqualFold(ca, addr) {
+		q += fmt.Sprintf("\n\nMail to %s now lands in %s (the catch-all); afterwards it lands in the new mailbox.", addr, ca)
+		bind += "|" + ca
+	}
+	q += "\n\nIt can't be deleted or renamed here."
+	if res, err := t.askMail(ctx, req, q, bind); err != nil || res != nil {
+		return res, MailChangeOut{}, err
+	}
+	r, err := t.MailWrite.call(ctx, mcall{"x:Account/set", map[string]any{"create": map[string]any{"g": map[string]any{
+		"@type": "Group", "name": name, "domainId": did, "description": sender}}}})
+	if err != nil {
+		return nil, MailChangeOut{}, err
+	}
+	gid := ""
+	if len(r) == 1 {
+		if c, ok := r[0]["created"].(map[string]any); ok {
+			if g, ok := c["g"].(map[string]any); ok {
+				gid = str(g, "id")
+			}
+		}
+		if nc, ok := r[0]["notCreated"].(map[string]any); ok {
+			if e, ok := nc["g"].(map[string]any); ok {
+				return nil, MailChangeOut{}, fmt.Errorf("the mail server refused to create it: %s %s", str(e, "type"), str(e, "description"))
+			}
+		}
+	}
+	if gid == "" {
+		return nil, MailChangeOut{}, fmt.Errorf("the mail server didn't confirm the new mailbox: check with mail_mailboxes")
+	}
+	done := []string{"created " + addr}
+	for i, p := range people {
+		gids := objOf(raws[i], "memberGroupIds")
+		gids[gid] = true
+		if err := t.setAccount(ctx, str(raws[i], "id"), map[string]any{"memberGroupIds": gids}); err != nil {
+			return nil, MailChangeOut{}, partial(done, fmt.Errorf("adding %s: %w", p.Name, err))
+		}
+		done = append(done, "added "+p.Name)
+	}
+	return nil, MailChangeOut{Done: strings.Join(done, "; "), Mailbox: t.afterChange(ctx, name),
+		Note: "Created with the admin's confirmation. It lives on the mail server only (not in the instance's mail plan). Members see it in their mail app at the next refresh."}, nil
+}
+
+// catchAll: the domain's catch-all address, if any.
+func (t *Tools) catchAll(ctx context.Context, did string) string {
+	r, err := t.MailWrite.call(ctx, mcall{"x:Domain/get", map[string]any{"ids": []string{did}, "properties": []string{"id", "name", "catchAllAddress"}}})
+	if err != nil || len(r) != 1 {
+		return ""
+	}
+	for _, d := range list(r[0]) {
+		return str(d, "catchAllAddress")
+	}
+	return ""
 }

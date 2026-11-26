@@ -74,7 +74,7 @@ func newFakeMailW(t *testing.T) (*fakeMailW, *Stalwart) {
 				}
 				res = map[string]any{"list": l}
 			case "x:Domain/get":
-				res = map[string]any{"list": []any{map[string]any{"id": "d1", "name": "co.example"}, map[string]any{"id": "d2", "name": "elsewhere.example"}}}
+				res = map[string]any{"list": []any{map[string]any{"id": "d1", "name": "co.example", "catchAllAddress": "contact@co.example"}, map[string]any{"id": "d2", "name": "elsewhere.example"}}}
 			case "x:Account/set":
 				if key != "API_write" {
 					out = append(out, []any{"error", map[string]any{"type": "forbidden"}, id})
@@ -82,6 +82,13 @@ func newFakeMailW(t *testing.T) (*fakeMailW, *Stalwart) {
 				}
 				b, _ := json.Marshal(args)
 				f.sets = append(f.sets, string(b))
+				if cr, ok := args["create"].(map[string]any); ok {
+					g := cr["g"].(map[string]any)
+					g["id"] = "g9"
+					f.accts["g9"] = g
+					res = map[string]any{"created": map[string]any{"g": map[string]any{"id": "g9"}}}
+					break
+				}
 				up, _ := args["update"].(map[string]any)
 				done, not := map[string]any{}, map[string]any{}
 				for aid, p := range up {
@@ -119,7 +126,7 @@ func mailWriteTools(t *testing.T, a answer) (*fakeMailW, *mcp.ClientSession, *[]
 	_, read, _ := newFake(t)
 	f, w := newFakeMailW(t)
 	r := &Stalwart{Base: w.Base, Key: "API_read", HTTP: w.HTTP}
-	cs, asked := wsession(t, &Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}, UserDomain: "co.example"}, a)
+	cs, asked := wsession(t, &Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}, UserDomain: "co.example", MailGroupCreate: true}, a)
 	return f, cs, asked
 }
 
@@ -134,6 +141,9 @@ func TestMailWriteToolsOnlyWithWriteKey(t *testing.T) {
 		{&Tools{API: read, Mail: r}, nil},
 		{&Tools{API: read, Mail: r, Write: write, Ask: &confirm.Asker{}}, nil},
 		{&Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}}, []string{"mail_group_member_add", "mail_group_member_remove", "mail_quota_set"}},
+		// Without the switch, no group create even with a domain.
+		{&Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}, UserDomain: "co.example"}, []string{"mail_group_member_add", "mail_group_member_remove", "mail_quota_set"}},
+		{&Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}, UserDomain: "co.example", MailGroupCreate: true}, []string{"mail_group_create", "mail_group_member_add", "mail_group_member_remove", "mail_quota_set"}},
 	} {
 		cs, _ := wsession(t, tc.at, yes)
 		res, _ := cs.ListTools(context.Background(), nil)
@@ -327,5 +337,77 @@ func TestParseLimit(t *testing.T) {
 		if _, err := parseLimit(in); err == nil {
 			t.Errorf("%q allowed", in)
 		}
+	}
+}
+
+func TestMailGroupCreateGuard(t *testing.T) {
+	cr := func(g map[string]any, extra ...string) mcall {
+		a := map[string]any{"create": map[string]any{"g": g}}
+		for _, k := range extra {
+			a[k] = map[string]any{}
+		}
+		return mcall{"x:Account/set", a}
+	}
+	if err := checkSet(cr(map[string]any{"@type": "Group", "name": "sales", "domainId": "d1", "description": "Sales"})); err != nil {
+		t.Errorf("group create refused: %v", err)
+	}
+	for _, c := range []mcall{
+		cr(map[string]any{"@type": "User", "name": "x", "domainId": "d1"}),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1", "aliases": map[string]any{}}),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1", "roles": "admin"}),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1", "permissions": map[string]any{}}),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1", "quotas": map[string]any{}}),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1", "memberTenantId": "t"}),
+		cr(map[string]any{"@type": "Group", "name": "x"}),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1"}, "update"),
+		cr(map[string]any{"@type": "Group", "name": "x", "domainId": "d1"}, "destroy"),
+		{"x:Account/set", map[string]any{"create": map[string]any{"a": map[string]any{"@type": "Group", "name": "a", "domainId": "d1"}, "b": map[string]any{"@type": "Group", "name": "b", "domainId": "d1"}}}},
+	} {
+		if checkSet(c) == nil {
+			t.Errorf("allowed: %v", c.args)
+		}
+	}
+}
+
+func TestMailGroupCreate(t *testing.T) {
+	f, cs, asked := mailWriteTools(t, yes)
+	txt, isErr := call(t, cs, "mail_group_create", map[string]any{"name": "Sales", "sender_name": "ACME Sales", "members": []string{"boss", "hugo@co.example"}})
+	if isErr || !strings.Contains(txt, `"members":["boss","hugo"]`) || !strings.Contains(txt, `"address":"sales@co.example"`) {
+		t.Fatalf("create: %s", txt)
+	}
+	q := (*asked)[0].Message
+	if !strings.HasPrefix(q, `Create the shared mailbox sales@co.example ("ACME Sales") with members boss, hugo: they read it and can send as sales@co.example?`) ||
+		!strings.Contains(q, "now lands in contact@co.example (the catch-all)") {
+		t.Errorf("question: %q", q)
+	}
+	if len(f.sets) != 3 || !strings.Contains(f.sets[0], `"create":{"g":{"@type":"Group","description":"ACME Sales","domainId":"d1","name":"sales"}}`) {
+		t.Errorf("sets: %v", f.sets)
+	}
+	if got := f.get("u2", "memberGroupIds"); got != `{"g1":true,"g9":true}` {
+		t.Errorf("hugo's groups: %s", got)
+	}
+	n, na := f.setCount(), len(*asked)
+	for _, c := range []struct {
+		args map[string]any
+		want string
+	}{
+		{map[string]any{"name": "postmaster", "sender_name": "x", "members": []string{"boss"}}, "reserved"},
+		{map[string]any{"name": "admins2", "sender_name": "x", "members": []string{"boss"}}, "reserved"},
+		{map[string]any{"name": "anna", "sender_name": "x", "members": []string{"boss"}}, "login name"},
+		{map[string]any{"name": "contact", "sender_name": "x", "members": []string{"boss"}}, "already in use"},
+		{map[string]any{"name": "old", "sender_name": "x", "members": []string{"boss"}}, "already in use"},
+		{map[string]any{"name": "sales", "sender_name": "x", "members": []string{"boss"}}, "already in use"},
+		{map[string]any{"name": "team", "sender_name": "x", "members": []string{}}, "1 to 20"},
+		{map[string]any{"name": "team", "sender_name": "x", "members": []string{"mcp-gateway"}}, "machine account"},
+		{map[string]any{"name": "team", "sender_name": "x", "members": []string{"relay-bot"}}, "no login account"},
+		{map[string]any{"name": "team", "sender_name": "x\nAccept", "members": []string{"boss"}}, "plain text"},
+		{map[string]any{"name": "te am", "sender_name": "x", "members": []string{"boss"}}, "isn't valid"},
+	} {
+		if txt, isErr := call(t, cs, "mail_group_create", c.args); !isErr || !strings.Contains(txt, c.want) {
+			t.Errorf("%v: %s, want %q", c.args, txt, c.want)
+		}
+	}
+	if f.setCount() != n || len(*asked) != na {
+		t.Error("a refused create was asked or sent")
 	}
 }
