@@ -42,6 +42,9 @@ type Tools struct {
 	// MailWrite: the gateway's mail key that may also change accounts
 	// (read + update; Write set). nil: no mail changes. Needs Ask.
 	MailWrite *Stalwart
+	// Files: the file app's project spaces, as the admin (nil: no
+	// files_space tools). Changes need Ask too.
+	Files *Files
 	// MailProtected: mail accounts never changed here (machine accounts;
 	// default mcp-gateway, ses-relay). People also need a login account.
 	MailProtected []string
@@ -90,6 +93,10 @@ func (t *Tools) Register(s *mcp.Server) {
 		add(t, s, &mcp.Tool{Name: "mail_delivery", Annotations: ro,
 			Description: "Was mail to this address delivered? Shows anything to it still queued or failing, and explains what an empty answer means." + noContent}, t.delivery)
 	}
+	if t.Files != nil {
+		add(t, s, &mcp.Tool{Name: "files_spaces", Annotations: ro,
+			Description: "The file app's project spaces: name, size limit and use, members with their roles (viewer, editor, manager), and whether you manage it. Never file contents."}, t.filesSpaces)
+	}
 	if len(t.CertHosts) > 0 {
 		add(t, s, &mcp.Tool{Name: "ops_certs", Annotations: ro,
 			Description: "TLS certificates of the instance's public sites: expiry and days left, soonest first; broken ones first."}, t.certs)
@@ -104,6 +111,18 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Remove a person from a shared mailbox: they lose access to it and its mail (the mailbox and mail stay). Never its last member." + asks}, t.memberRemove)
 		add(t, s, &mcp.Tool{Name: "mail_quota_set", Annotations: w,
 			Description: "Set a mailbox's size limit (e.g. 5 GB, or 'no limit'); never below what it already uses." + asks}, t.quotaSet)
+	}
+	if t.Files != nil && t.Ask != nil {
+		add(t, s, &mcp.Tool{Name: "files_space_create", Annotations: w,
+			Description: "Create a project space in the file app with a manager (a person who has logged in to the file app once); you stay a manager too. Optional size limit." + asks}, t.spaceCreate)
+		add(t, s, &mcp.Tool{Name: "files_space_member_add", Annotations: w,
+			Description: "Give a person or a group access to a project space you manage: viewer, editor or manager." + asks}, t.spaceMemberAdd)
+		add(t, s, &mcp.Tool{Name: "files_space_member_remove", Annotations: d,
+			Description: "Take a person or a group out of a project space you manage: they lose access to all its files (the files stay). Never the last manager, never yourself." + asks}, t.spaceMemberRemove)
+		add(t, s, &mcp.Tool{Name: "files_space_member_role", Annotations: w,
+			Description: "Change a member's role in a project space you manage (viewer, editor, manager). Never the last manager." + asks}, t.spaceMemberRole)
+		add(t, s, &mcp.Tool{Name: "files_space_quota", Annotations: w,
+			Description: "Set a project space's size limit (GB); never below what it uses." + asks}, t.spaceQuota)
 	}
 	if t.Write == nil || t.Ask == nil {
 		return

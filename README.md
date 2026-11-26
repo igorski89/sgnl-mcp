@@ -145,6 +145,19 @@ a login lands in: an alias like newhire@ on an admin's account would put
 the new hire into it. Aliases are changed only by the operator, on the
 server, and the guard refuses any update carrying them.
 
+Project spaces (file app), with `SGNL_MCP_ADMIN_SPACES=1` and
+`SGNL_MCP_OPENCLOUD_URL`: `files_spaces` (project spaces with members,
+roles, quota and use), and, each confirmed: `files_space_create` (the admin
+stays co-manager), `files_space_member_add` / `_remove` / `_role` (viewer,
+editor, manager; only in spaces the admin manages; never the last manager
+or themselves), `files_space_quota` (never below use). They call
+OpenCloud's Graph API with the admin's own exchanged token (OpenCloud gives
+admins its Admin role from the login groups), so no extra credential. Only
+`/graph/v1.0/drives` (list, create a project space, PATCH of the quota
+only), `/graph/v1beta1/drives/{id}/root/{invite,permissions}` (one
+recipient and one space role per call) and user/group lookup: never a
+DELETE of a drive (disable/purge), never other drive properties.
+
 **Stalwart 1.1.1 refuses these changes as shipped:** before any account
 update it requires the caller to hold every permission of the target
 account (`validate_account_access`), i.e. the user role's mail

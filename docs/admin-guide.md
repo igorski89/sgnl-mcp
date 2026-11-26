@@ -35,7 +35,11 @@ Keep it separate from your everyday connection, and connect it only when you nee
 | **Log someone out everywhere** | **Yes** |
 | **Disable an account** | **Yes, and you type their username** |
 | **Enable an account again** | **Yes** |
-| Add or remove someone's extra addresses (aliases); delete a person, a group, a mailbox or mail; reset passwords or passkeys, lift a lockout | **Never**: done by whoever runs the instance, on the server |
+| See the file app's project spaces: members and their roles, size limit and use | No (never file contents) |
+| **Create a project space** (with a manager; you stay a manager) | **Yes** |
+| **Add someone to a project space you manage, change their role, remove them** | **Yes**: you see the space and what they gain or lose |
+| **Set a project space's size limit** | **Yes**: you see the limit now, the new one and what it uses |
+| Add or remove someone's extra addresses (aliases); delete a person, a group, a mailbox or mail; disable or delete a project space; reset passwords or passkeys, lift a lockout | **Never**: done by whoever runs the instance, on the server, or in the file app |
 | Restart apps, run or restore backups, deploy | **Never**: done by whoever runs the instance |
 
 ## People and groups
@@ -129,6 +133,23 @@ You can't log out or disable yourself here.
 - **Size limits:** never below what the mailbox already uses. When a mailbox is full, new mail to it bounces.
 - **What's live is what counts:** members are kept on the mail server itself, not in the instance's mail plan.
 - Not here: making or deleting mailboxes or shared mailboxes, deleting mail, and the server's own machine accounts. Ask whoever runs the instance.
+
+## Project spaces (file app)
+
+> "Which project spaces are there, and who's in them?"
+>
+> "Create a project space 'Marketing' with Anna as manager, 50 GB."
+>
+> "Give the developers group view access to Marketing." / "Make Ben an editor there." / "Take Ben out of Marketing."
+>
+> "Give Finance 20 GB."
+
+- **As you:** the assistant uses your own login to the file app, where admins have the admin role. Each change asks you first.
+- **Members only in spaces you manage:** the file app lets even admins change members only of spaces they manage. Spaces you create here keep you as a manager. For other spaces, ask one of their managers (they're listed).
+- **People appear after their first login to the file app:** a new colleague can be added once they've opened it once. Groups (e.g. developers) can be members too.
+- **Never the last manager**, and never yourself (so you don't lose the space by accident).
+- **Size limits:** never below what the space already uses. When it's full, nobody can add files to it.
+- Not here: disabling or deleting a space (that's in the file app), personal spaces, sharing links.
 
 ## If something goes wrong
 

@@ -52,6 +52,9 @@
 //	SGNL_MCP_STALWART_WRITE_API_KEY a second key that may also update accounts: mail_group_member_add/
 //	                        _remove, mail_quota_set, each confirmed (never aliases)
 //	SGNL_MCP_MAIL_PROTECTED mail accounts never changed (default mcp-gateway,ses-relay)
+//	SGNL_MCP_ADMIN_SPACES   set (1), with SGNL_MCP_OPENCLOUD_URL: files_spaces and the project
+//	                        space changes (create, members, quota) on the admin endpoint,
+//	                        as the admin (their own OpenCloud token; Admin role by group)
 //	SGNL_MCP_ADMIN_GROUP_APPS   what the instance's own groups open, shown on group
 //	                        changes: group=text;group=text (SGNL's own groups are built in)
 //	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
@@ -284,6 +287,15 @@ func main() {
 		}
 		if len(at.CertHosts) > 0 {
 			what += ", certificate expiry"
+		}
+		if os.Getenv("SGNL_MCP_ADMIN_SPACES") != "" {
+			ou := os.Getenv("SGNL_MCP_OPENCLOUD_URL")
+			if ou == "" {
+				log.Fatal("sgnl-mcp: SGNL_MCP_ADMIN_SPACES needs SGNL_MCP_OPENCLOUD_URL")
+			}
+			at.Files = &admin.Files{Base: ou, Token: gw.FilesToken, HTTP: &http.Client{Timeout: 20 * time.Second}}
+			at.Ask = t.Asker()
+			what += "; the file app's project spaces (list; create, members, size limit, each only after the admin confirms)"
 		}
 		if wid := os.Getenv("SGNL_MCP_ADMIN_WRITE_CLIENT_ID"); wid != "" {
 			if os.Getenv("SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET") == "" {
