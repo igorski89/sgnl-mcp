@@ -42,6 +42,12 @@ func accept(must ...string) func(*Runner) Expect {
 	return func(*Runner) Expect { return Expect{Dialog: Accept, Must: must} }
 }
 
+// mustAsk: the tool always asks here (seen in the live runs), and the
+// question is accepted if it passes every check; no question fails the step.
+func mustAsk(must ...string) func(*Runner) Expect {
+	return func(*Runner) Expect { return Expect{Dialog: Accept, Must: must} }
+}
+
 func ifAsked(must ...string) func(*Runner) Expect {
 	return func(*Runner) Expect { return Expect{Dialog: AcceptIfAsked, Must: must} }
 }
@@ -222,7 +228,7 @@ func Steps() []Step {
 		}, Check: set("a_note", "path")},
 		{Name: "read .md", Who: A, Tool: "file_read", Needs: []string{"a_note"}, Args: func(r *Runner) map[string]any { return map[string]any{"path": r.v("a_note")} },
 			Check: contains("text", "line one")},
-		{Name: "edit .md", Who: A, Tool: "file_edit", Write: true, Needs: []string{"a_note"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "edit .md", Who: A, Tool: "file_edit", Write: true, Needs: []string{"a_note"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"path": r.v("a_note"), "edits": []map[string]any{{"old_text": "line one", "new_text": "line 1"}}}
 		}},
 		{Name: "versions", Who: A, Tool: "file_versions", Needs: []string{"a_note"}, Poll: 20 * time.Second, Args: func(r *Runner) map[string]any { return map[string]any{"path": r.v("a_note")} },
@@ -234,7 +240,7 @@ func Steps() []Step {
 				r.vars["a_ver"] = gstr(vs[0], "id")
 				return nil
 			}},
-		{Name: "restore a version", Who: A, Tool: "file_version_restore", Write: true, Needs: []string{"a_note", "a_ver"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "restore a version", Who: A, Tool: "file_version_restore", Write: true, Needs: []string{"a_note", "a_ver"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"path": r.v("a_note"), "version": r.v("a_ver")}
 		}},
 		{Name: "read the restored", Who: A, Tool: "file_read", Needs: []string{"a_note", "a_ver"}, Args: func(r *Runner) map[string]any { return map[string]any{"path": r.v("a_note")} },
@@ -265,7 +271,7 @@ func Steps() []Step {
 		}, Check: set("a_docx", "path")},
 		{Name: "read .docx", Who: A, Tool: "file_read", Needs: []string{"a_docx"}, Args: func(r *Runner) map[string]any { return map[string]any{"path": r.v("a_docx")} },
 			Check: contains("text", "bold", "item")},
-		{Name: "edit .docx", Who: A, Tool: "file_office_edit", Write: true, Needs: []string{"a_docx"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "edit .docx", Who: A, Tool: "file_office_edit", Write: true, Needs: []string{"a_docx"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"path": r.v("a_docx"), "append": "## Added " + r.run + "\n\nMore text.",
 				"replace": []map[string]any{{"old": "Some ", "new": "Changed "}}}
 		}},
@@ -277,7 +283,7 @@ func Steps() []Step {
 			return map[string]any{"folder": r.v("a_dir"), "name": "sheet " + r.run + ".xlsx",
 				"sheets": []map[string]any{{"name": "S", "rows": [][]any{{"item", "n"}, {"a", 1}, {"b", 2}}}}}
 		}, Check: set("a_xlsx", "path")},
-		{Name: "edit .xlsx", Who: A, Tool: "file_office_edit", Write: true, Needs: []string{"a_xlsx"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "edit .xlsx", Who: A, Tool: "file_office_edit", Write: true, Needs: []string{"a_xlsx"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"path": r.v("a_xlsx"), "changes": []map[string]any{
 				{"sheet": "S", "append_rows": [][]any{{"zz", 3}}}, {"sheet": "S", "set_cells": map[string]any{"B2": 10}}}}
 		}},
@@ -391,7 +397,7 @@ func Steps() []Step {
 				}
 				return nil
 			}},
-		{Name: "cancel it", Who: B, Tool: "event_cancel", Write: true, Needs: []string{"a_ev"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_ev")} }},
+		{Name: "cancel it", Who: B, Tool: "event_cancel", Write: true, Needs: []string{"a_ev"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_ev")} }},
 		{Name: "invite B", Who: A, Tool: "event_invite", Write: true, Args: func(r *Runner) map[string]any {
 			return map[string]any{"title": tag + " meeting " + r.run, "start": r.day(3) + "T11:00", "minutes": 30, "attendees": []string{r.people.B}}
 		}, Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run, r.people.B}} }, Check: set("a_inv", "id")},
@@ -406,7 +412,7 @@ func Steps() []Step {
 		}},
 		{Name: "B gets the invitation", Who: B, Tool: "mail_search", Needs: []string{"a_inv"}, Poll: 90 * time.Second, Args: func(r *Runner) map[string]any { return map[string]any{"query": r.run} },
 			Check: func(r *Runner, o callOut) error { return findMail("b_inv_mail", "meeting "+r.run)(r, o) }},
-		{Name: "B imports it", Who: B, Tool: "event_import", Write: true, Needs: []string{"b_inv_mail"}, Expect: ifAsked(), OKErr: []string{"already"},
+		{Name: "B imports it", Who: B, Tool: "event_import", Write: true, Needs: []string{"b_inv_mail"}, Expect: mustAsk(), OKErr: []string{"already"},
 			Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("b_inv_mail")} }},
 		{Name: "B lists it", Who: B, Tool: "event_list", Needs: []string{"a_inv"}, Poll: 60 * time.Second, Args: func(r *Runner) map[string]any { return map[string]any{"from": r.day(3), "to": r.day(3)} },
 			Check: func(r *Runner, o callOut) error {
@@ -417,17 +423,17 @@ func Steps() []Step {
 				r.vars["b_ev"] = gstr(ev, "id")
 				return nil
 			}},
-		{Name: "B accepts", Who: B, Tool: "event_respond", Write: true, Needs: []string{"b_ev"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "B accepts", Who: B, Tool: "event_respond", Write: true, Needs: []string{"b_ev"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"id": r.v("b_ev"), "answer": "accept"}
 		}},
-		{Name: "A moves the meeting", Who: A, Tool: "event_update", Write: true, Needs: []string{"a_inv"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "A moves the meeting", Who: A, Tool: "event_update", Write: true, Needs: []string{"a_inv"}, Expect: mustAsk(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"id": r.v("a_inv"), "minutes": 45}
 		}},
 		{Name: "A cancels the meeting", Who: A, Tool: "event_cancel", Write: true, Needs: []string{"a_inv"}, Expect: accept(), Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_inv")} }},
 
 		// ---- out of office: a window a month ahead, then off
 		{Name: "out of office on", Who: B, Tool: "out_of_office_set", Write: true, Expect: func(*Runner) Expect {
-			return Expect{Dialog: AcceptIfAsked, Must: []string{"automatic reply"}, Outward: true, Unnamed: true}
+			return Expect{Dialog: Accept, Must: []string{"automatic reply"}, Outward: true, Unnamed: true}
 		}, Args: func(r *Runner) map[string]any {
 			return map[string]any{"on": true, "from": r.day(30), "to": r.day(31), "subject": tag + " away " + r.run, "text": "Away (smoke test " + r.run + ")."}
 		}},
