@@ -145,7 +145,8 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 				case "S":
 					res = map[string]any{"list": []map[string]any{
 						{"id": "s1", "name": "Anna", "isDefault": true, "myRights": map[string]bool{"mayReadItems": true, "mayWriteOwn": true}},
-						{"id": "s2", "name": "Anna private", "myRights": map[string]bool{"mayReadFreeBusy": true}}}}
+						{"id": "s2", "name": "Anna private", "myRights": map[string]bool{"mayReadFreeBusy": true}},
+						{"id": "s3", "name": "Anna team", "myRights": map[string]bool{"mayReadItems": true, "mayWriteAll": true}}}}
 				case "R":
 					res = map[string]any{"list": []map[string]any{{"id": "r1", "name": "Board", "myRights": map[string]bool{"mayReadItems": true}}}}
 				}

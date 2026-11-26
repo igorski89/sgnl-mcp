@@ -621,6 +621,7 @@ type CalendarInfo struct {
 	CanAdd    bool   `json:"can_add,omitempty" jsonschema:"you may add events to it"`
 	ReadOnly  bool   `json:"read_only,omitempty"`
 	isDefault bool
+	writeAll  bool // may change and remove any event in it
 }
 
 type CalendarListOut struct {
@@ -661,7 +662,8 @@ func (t *Tools) calendarsOf(ctx context.Context, tok string, s *jmap.Session, ac
 		// Someone else's calendar: only what its rights say (none reported: read only).
 		can := own || c.MyRights["mayWriteAll"] || c.MyRights["mayWriteOwn"]
 		out = append(out, CalendarInfo{Account: a.Name, Owner: a.Name, Name: oneLine(c.Name, 100), ID: c.ID, Yours: own,
-			CanAdd: can && !a.IsReadOnly, ReadOnly: !can || a.IsReadOnly, isDefault: c.IsDefault})
+			CanAdd: can && !a.IsReadOnly, ReadOnly: !can || a.IsReadOnly, isDefault: c.IsDefault,
+			writeAll: (own || c.MyRights["mayWriteAll"]) && !a.IsReadOnly})
 	}
 	return out, nil
 }

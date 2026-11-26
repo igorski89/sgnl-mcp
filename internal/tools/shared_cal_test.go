@@ -112,3 +112,76 @@ func TestAvailabilityNote(t *testing.T) {
 		cs.Close()
 	}
 }
+
+func TestSharedCalendarChanges(t *testing.T) {
+	asPerson(t, "me@co.example")
+	mk := func(title, cal string, parts map[string]any) map[string]any {
+		e := map[string]any{"id": "x", "title": title, "start": "2027-03-04T10:00:00", "timeZone": "Europe/Berlin", "duration": "PT1H",
+			"calendarIds": map[string]any{cal: true}}
+		if parts != nil {
+			e["participants"] = parts
+			for _, p := range parts {
+				if p.(map[string]any)["roles"].(map[string]any)["owner"] == true {
+					e["organizerCalendarAddress"] = p.(map[string]any)["calendarAddress"]
+				}
+			}
+		}
+		return e
+	}
+	person := func(addr string, owner bool) map[string]any {
+		r := map[string]any{"attendee": true}
+		if owner {
+			r = map[string]any{"owner": true, "attendee": true}
+		}
+		return map[string]any{"calendarAddress": "mailto:" + addr, "roles": r}
+	}
+	f := &fakeCal{events: map[string]map[string]any{}, shared: map[string]map[string]map[string]any{"S": {
+		"a1": mk("Dentist", "s1", nil),
+		"p2": mk("Offsite prep", "s3", nil),
+		"t1": mk("Team sync", "s3", map[string]any{"o": person("anna@co.example", true), "b": person("bob@co.example", false)}),
+		"x1": mk("Bob's review", "s3", map[string]any{"o": person("bob@co.example", true), "a": person("anna@co.example", false)}),
+	}}}
+	for id, e := range f.shared["S"] {
+		e["id"] = id
+	}
+	var asked []string
+	cs := inviteSession(t, f, func(_ context.Context, r *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked = append(asked, r.Params.Message)
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{}}, nil
+	})
+	// Only "add" rights on that calendar: refused, nothing asked.
+	if txt, isErr := callTool(t, cs, "event_update", map[string]any{"account": "anna@co.example", "id": "a1", "title": "X"}); !isErr || !strings.Contains(txt, "reading or adding only") {
+		t.Errorf("writeOwn calendar: %s", txt)
+	}
+	// A private entry in a calendar the person may change: asked, never mailed.
+	if txt, isErr := callTool(t, cs, "event_update", map[string]any{"account": "anna@co.example", "id": "p2", "title": "Offsite"}); isErr {
+		t.Fatalf("private shared: %s", txt)
+	}
+	if len(asked) != 1 || !strings.HasPrefix(asked[0], `Change "Offsite prep" in anna@co.example's calendar "Anna team": title → "Offsite"? Everyone who can see that calendar will see it.`) {
+		t.Errorf("question: %v", asked)
+	}
+	b, _ := json.Marshal(f.sets[len(f.sets)-1])
+	if !strings.Contains(string(b), `"accountId":"S"`) || strings.Contains(string(b), "sendSchedulingMessages") {
+		t.Errorf("private set: %s", b)
+	}
+	// A meeting the owner organizes: as the owner, attendees get the cancellation.
+	if txt, isErr := callTool(t, cs, "event_cancel", map[string]any{"account": "anna@co.example", "id": "t1"}); isErr {
+		t.Fatalf("cancel: %s", txt)
+	}
+	if q := asked[len(asked)-1]; !strings.HasPrefix(q, `In anna@co.example's calendar "Anna team", as anna@co.example: cancel the meeting "Team sync"`) ||
+		!strings.Contains(q, "Attendee: bob@co.example") || !strings.Contains(q, "goes out in anna@co.example's name") {
+		t.Errorf("cancel question: %q", q)
+	}
+	b, _ = json.Marshal(f.sets[len(f.sets)-1])
+	if !strings.Contains(string(b), `"accountId":"S"`) || !strings.Contains(string(b), `"destroy":["t1"]`) || !strings.Contains(string(b), `"sendSchedulingMessages":true`) {
+		t.Errorf("cancel set: %s", b)
+	}
+	// The owner is only an attendee: refused.
+	n := len(f.sets)
+	if txt, isErr := callTool(t, cs, "event_cancel", map[string]any{"account": "anna@co.example", "id": "x1"}); !isErr || !strings.Contains(txt, "doesn't organize") {
+		t.Errorf("attendee owner: %s", txt)
+	}
+	if len(f.sets) != n {
+		t.Error("changed without being allowed")
+	}
+}

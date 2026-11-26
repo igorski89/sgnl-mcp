@@ -248,6 +248,7 @@ func (t *Tools) eventRespond(ctx context.Context, req *mcp.CallToolRequest, in E
 // ---- event_update
 
 type EventUpdateIn struct {
+	InCalendar
 	ID          string  `json:"id" jsonschema:"event id from event_list"`
 	Occurrence  string  `json:"occurrence,omitempty" jsonschema:"for a repeating series: change only this meeting (the occurrence event_list gives); without it, title, place and description of ALL meetings"`
 	Title       *string `json:"title,omitempty"`
@@ -263,8 +264,19 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		return nil, EventChangeOut{}, err
 	}
 	me, _ := personOf(ctx)
-	role, _ := e.role(me.Email)
+	owner, calName, err := t.sharedCal(ctx, tok, s, acct, e)
+	if err != nil {
+		return nil, EventChangeOut{}, err
+	}
+	self := me.Email // in a shared calendar: as its owner
+	if owner != "" {
+		self = owner
+	}
+	role, _ := e.role(self)
 	if role != "owner" && role != "organizer" {
+		if owner != "" {
+			return nil, EventChangeOut{}, fmt.Errorf("%s doesn't organize this meeting, so it can't be changed in their calendar here", oneLine(owner, 80))
+		}
 		return nil, EventChangeOut{}, fmt.Errorf("only the organizer can change this event (you are: %s); to say you can't come, use event_respond", role)
 	}
 	series, occ := e.repeats(), strings.TrimSpace(in.Occurrence)
@@ -365,13 +377,31 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 	}
 
 	if role == "owner" {
-		// A private event: no one else is told, no question.
+		// A private event: no one else is told; in the person's own calendar
+		// no question, in a shared one always.
+		if owner != "" {
+			q := fmt.Sprintf("Change %q in %s: %s? %s", oneLine(cur.Title, 60), where(owner, calName), strings.Join(changes, "; "), seenByAll)
+			if occ != "" {
+				q = fmt.Sprintf("Change only the meeting %q on %s in %s: %s? %s", oneLine(cur.Title, 60), whenText(oldStart, cur.ShowWithoutTime), where(owner, calName),
+					strings.Join(changes, "; "), seenByAll)
+			}
+			res, ok, err := t.confirm(ctx, req, q+"\n\nNo one is mailed.", acct+"|"+e.ID+"|"+e.Start+"|"+e.Title+"|"+occ+"|"+fmt.Sprint(e.RecurrenceOver)+"|"+fmt.Sprint(patch))
+			if err != nil || res != nil {
+				return res, EventChangeOut{}, err
+			}
+			if !ok {
+				return nil, EventChangeOut{}, fmt.Errorf("the person declined: nothing was changed")
+			}
+		}
 		r, err := t.JMAP.Invoke(ctx, tok, s, calUsing, jmap.Call{Method: "CalendarEvent/set", Args: map[string]any{"accountId": acct, "update": map[string]any{e.ID: patch}}})
 		if err != nil {
 			return nil, EventChangeOut{}, err
 		}
 		if err := jmap.SetErrors(r[0]); err != nil {
 			return nil, EventChangeOut{}, err
+		}
+		if owner != "" {
+			return nil, EventChangeOut{e.ID, "Changed in " + where(owner, calName) + " with the person's confirmation; no one was mailed."}, nil
 		}
 		what := "Changed in the person's calendar (private: no one else was told)."
 		if occ != "" {
@@ -385,7 +415,7 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 	if !oldEnd.After(time.Now()) {
 		return nil, EventChangeOut{}, fmt.Errorf("this meeting is over: change it in your calendar app if needed (no update would be sent)")
 	}
-	who, outside := t.attendeesOf(ctx, e, me.Email)
+	who, outside := t.attendeesOf(ctx, e, self)
 	var first string
 	switch {
 	case occ != "":
@@ -399,15 +429,21 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 	if outside > 0 {
 		first += fmt.Sprintf(" (%d OUTSIDE the company)", outside)
 	}
+	if owner != "" {
+		first = fmt.Sprintf("In %s, as %s: %s", where(owner, calName), oneLine(owner, 80), first)
+	}
 	var b strings.Builder
 	b.WriteString(first + ".\n\nWas: " + whenText(oldStart, cur.ShowWithoutTime) + "\n")
+	if owner != "" {
+		b.WriteString("The update goes out in " + oneLine(owner, 80) + "'s name. " + seenByAll + "\n")
+	}
 	for _, a := range who {
 		b.WriteString("Attendee: " + a + "\n")
 	}
 	if t.outside.recent(me.Username) {
 		b.WriteString("\nWARNING: your assistant read email from outside the company in the last 30 minutes; make sure this is what you asked for.\n")
 	}
-	res, ok, err := t.confirm(ctx, req, b.String(), e.ID+"|"+e.Start+"|"+e.Duration+"|"+e.Title+"|"+occ+"|"+fmt.Sprint(e.RecurrenceOver)+"|"+fmt.Sprint(patch))
+	res, ok, err := t.confirm(ctx, req, b.String(), acct+"|"+e.ID+"|"+e.Start+"|"+e.Duration+"|"+e.Title+"|"+occ+"|"+fmt.Sprint(e.RecurrenceOver)+"|"+fmt.Sprint(patch))
 	if err != nil || res != nil {
 		return res, EventChangeOut{}, err
 	}
@@ -425,9 +461,41 @@ func (t *Tools) eventUpdate(ctx context.Context, req *mcp.CallToolRequest, in Ev
 	return nil, EventChangeOut{e.ID, "Changed; the mail server sends the update to the attendees."}, nil
 }
 
+// sharedCal: for an event in a calendar someone shared with the person,
+// whose calendar it is and its name; the change is refused unless the
+// share lets the person change any event there (mayWriteAll). "" owner:
+// the person's own calendar.
+func (t *Tools) sharedCal(ctx context.Context, tok string, s *jmap.Session, acct string, e calEvent) (owner, name string, err error) {
+	if acct == s.PrimaryAccounts[jmap.Calendars] {
+		return "", "", nil
+	}
+	owner = s.Accounts[acct].Name
+	cs, err := t.calendarsOf(ctx, tok, s, acct)
+	if err != nil {
+		return "", "", err
+	}
+	for _, c := range cs {
+		if e.CalendarIDs[c.ID] && c.writeAll {
+			return owner, c.Name, nil
+		}
+	}
+	return "", "", fmt.Errorf("%s's calendar is shared with you for reading or adding only: its events can't be changed or cancelled here", oneLine(owner, 80))
+}
+
+// where: the place of a change, for a question.
+func where(owner, cal string) string {
+	if owner == "" {
+		return "your calendar"
+	}
+	return fmt.Sprintf("%s's calendar %q", oneLine(owner, 80), oneLine(cal, 60))
+}
+
+const seenByAll = "Everyone who can see that calendar will see it."
+
 // ---- event_cancel
 
 type EventCancelIn struct {
+	InCalendar
 	ID         string `json:"id" jsonschema:"event id from event_list"`
 	Occurrence string `json:"occurrence,omitempty" jsonschema:"for a repeating series: cancel only this meeting (the occurrence event_list gives); without it the WHOLE series"`
 }
@@ -438,7 +506,18 @@ func (t *Tools) eventCancel(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		return nil, EventChangeOut{}, err
 	}
 	me, _ := personOf(ctx)
-	role, _ := e.role(me.Email)
+	owner, calName, err := t.sharedCal(ctx, tok, s, acct, e)
+	if err != nil {
+		return nil, EventChangeOut{}, err
+	}
+	self := me.Email
+	if owner != "" {
+		self = owner
+	}
+	role, _ := e.role(self)
+	if owner != "" && role != "owner" && role != "organizer" {
+		return nil, EventChangeOut{}, fmt.Errorf("%s doesn't organize this meeting, so it can't be cancelled in their calendar here", oneLine(owner, 80))
+	}
 	if role == "attendee" {
 		return nil, EventChangeOut{}, fmt.Errorf("you're an attendee, not the organizer: to say you can't come, use event_respond with decline")
 	}
@@ -479,24 +558,32 @@ func (t *Tools) eventCancel(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		if !end.After(time.Now()) {
 			return nil, EventChangeOut{}, fmt.Errorf("this meeting is over: remove it in your calendar app if needed (no cancellation would be sent)")
 		}
-		who, outside := t.attendeesOf(ctx, e, me.Email)
+		who, outside := t.attendeesOf(ctx, e, self)
 		first := fmt.Sprintf("Cancel %s? %d attendee(s) get a cancellation by email", what, len(who))
+		if owner != "" {
+			first = fmt.Sprintf("In %s, as %s: cancel %s? %d attendee(s) get a cancellation by email", where(owner, calName), oneLine(owner, 80), what, len(who))
+		}
 		if outside > 0 {
 			first += fmt.Sprintf(" (%d OUTSIDE the company)", outside)
 		}
-		b.WriteString(first + ", and it is removed from your calendar.\n\n")
+		b.WriteString(first + ", and it is removed from " + where(owner, calName) + ".\n\n")
+		if owner != "" {
+			b.WriteString("The cancellation goes out in " + oneLine(owner, 80) + "'s name. " + seenByAll + "\n")
+		}
 		for _, a := range who {
 			b.WriteString("Attendee: " + a + "\n")
 		}
 	} else if occ != "" {
-		fmt.Fprintf(&b, "Remove %s from your calendar?\n", what)
+		fmt.Fprintf(&b, "Remove %s from %s?\n", what, where(owner, calName))
+	} else if owner != "" {
+		fmt.Fprintf(&b, "Delete %s from %s? It can't be restored. %s\n", what, where(owner, calName), seenByAll)
 	} else {
 		fmt.Fprintf(&b, "Delete your private event: %s, from your calendar? It can't be restored.\n", what)
 	}
 	if t.outside.recent(me.Username) {
 		b.WriteString("\nWARNING: your assistant read email from outside the company in the last 30 minutes; make sure this is what you asked for.\n")
 	}
-	res, ok, err := t.confirm(ctx, req, b.String(), e.ID+"|"+e.Start+"|"+e.Title+"|"+fmt.Sprint(send)+"|"+occ+"|"+fmt.Sprint(e.RecurrenceOver))
+	res, ok, err := t.confirm(ctx, req, b.String(), acct+"|"+e.ID+"|"+e.Start+"|"+e.Title+"|"+fmt.Sprint(send)+"|"+occ+"|"+fmt.Sprint(e.RecurrenceOver))
 	if err != nil || res != nil {
 		return res, EventChangeOut{}, err
 	}
@@ -528,6 +615,9 @@ func (t *Tools) eventCancel(ctx context.Context, req *mcp.CallToolRequest, in Ev
 		return nil, EventChangeOut{e.ID, "Removed the meeting of " + occ + " from the person's calendar; the rest of the series stays."}, nil
 	case send:
 		return nil, EventChangeOut{e.ID, "Cancelled; the mail server sends the cancellation to the attendees."}, nil
+	}
+	if owner != "" {
+		return nil, EventChangeOut{e.ID, "Deleted from " + where(owner, calName) + " with the person's confirmation."}, nil
 	}
 	return nil, EventChangeOut{e.ID, "Deleted from the person's calendar."}, nil
 }
