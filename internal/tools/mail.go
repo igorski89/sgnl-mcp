@@ -576,6 +576,7 @@ type DraftIn struct {
 	ReplyAll    bool     `json:"reply_all,omitempty" jsonschema:"with reply_to: also the original's other recipients"`
 	AttachFiles []string `json:"attach_files,omitempty" jsonschema:"files to attach (paths from file_search or folder_list)"`
 	ForwardOf   string   `json:"forward_of,omitempty" jsonschema:"message id to forward (its text is included)"`
+	From        string   `json:"from,omitempty" jsonschema:"send from this address of yours (one from identity_list, e.g. an alias); default: your main address"`
 }
 
 type DraftOut struct {
@@ -592,7 +593,7 @@ func (t *Tools) mailDraftCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, DraftOut{}, err
 	}
-	d := draft{to: toAddrs(in.To), cc: toAddrs(in.Cc), bcc: toAddrs(in.Bcc), subject: in.Subject, body: in.Body}
+	d := draft{from: strings.TrimSpace(in.From), to: toAddrs(in.To), cc: toAddrs(in.Cc), bcc: toAddrs(in.Bcc), subject: in.Subject, body: in.Body}
 	if in.ReplyTo != "" || in.ForwardOf != "" {
 		id := in.ReplyTo + in.ForwardOf
 		es, err := t.getEmails(ctx, tok, s, acct, []string{id}, 6000)
@@ -651,6 +652,7 @@ type DraftUpdateIn struct {
 	// Attachments are kept unless removed here.
 	RemoveAttachments []string `json:"remove_attachments,omitempty" jsonschema:"names of attachments to take off"`
 	AttachFiles       []string `json:"attach_files,omitempty" jsonschema:"files to attach (paths from file_search or folder_list)"`
+	From              string   `json:"from,omitempty" jsonschema:"send from this address of yours instead (identity_list); default: keep the draft's"`
 }
 
 func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in DraftUpdateIn) (*mcp.CallToolResult, DraftOut, error) {
@@ -697,6 +699,12 @@ func (t *Tools) mailDraftUpdate(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 	if in.Subject != "" {
 		d.subject = in.Subject
+	}
+	if len(o.From) == 1 {
+		d.from = o.From[0].Email
+	}
+	if f := strings.TrimSpace(in.From); f != "" {
+		d.from = f
 	}
 	if in.Body != "" {
 		d.body = in.Body
@@ -763,6 +771,7 @@ func replaceable(o emailFull, newBody bool) error {
 }
 
 type draft struct {
+	from                  string // the sender asked for ("": the person's main address)
 	to, cc, bcc           []address
 	subject, body         string
 	inReplyTo, references []string
@@ -793,7 +802,7 @@ func (t *Tools) saveDraft(ctx context.Context, tok string, s *jmap.Session, acct
 	if drafts == nil {
 		return "", fmt.Errorf("no Drafts folder")
 	}
-	from, err := t.fromAddress(ctx, tok, s, acct)
+	from, err := t.fromAddress(ctx, tok, s, acct, d.from)
 	if err != nil {
 		return "", err
 	}
@@ -859,10 +868,27 @@ func draftEmail(d draft, draftsID string, from address) map[string]any {
 	return e
 }
 
-// fromAddress: the person's identity (first sending identity, else their login email).
-func (t *Tools) fromAddress(ctx context.Context, tok string, s *jmap.Session, acct string) (address, error) {
-	me, _ := auth.Person(ctx)
+// fromAddress: the sender: want if it is one of the person's sending
+// identities, else their main identity (first sending identity, else
+// their login email).
+func (t *Tools) fromAddress(ctx context.Context, tok string, s *jmap.Session, acct, want string) (address, error) {
+	me, _ := personOf(ctx)
 	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, jmap.Call{Method: "Identity/get", Args: map[string]any{"accountId": acct}})
+	if want != "" {
+		if err != nil {
+			return address{}, err
+		}
+		var got struct {
+			List []struct{ Name, Email string }
+		}
+		_ = json.Unmarshal(r[0], &got)
+		for _, i := range got.List {
+			if strings.EqualFold(i.Email, want) {
+				return address{i.Name, i.Email}, nil
+			}
+		}
+		return address{}, fmt.Errorf("%s isn't one of your sending addresses (see identity_list)", oneLine(want, 80))
+	}
 	if err == nil {
 		var got struct {
 			List []struct{ Name, Email string }
@@ -1014,4 +1040,51 @@ func (t *Tools) updateEmails(ctx context.Context, ids []string, patch func(strin
 		}
 	}
 	return nil, MailChangeOut{Changed: len(got.Updated)}, nil
+}
+
+// ---- identity_list: the addresses the person (or a shared mailbox) can
+// send from: their own address and each alias the mail server gives them.
+
+type Identity struct {
+	Email   string   `json:"email" jsonschema:"pass as from to mail_draft_create / mail_draft_update"`
+	Name    string   `json:"name,omitempty" jsonschema:"the sender name recipients see"`
+	Main    bool     `json:"main,omitempty" jsonschema:"the default sender"`
+	ReplyTo []string `json:"reply_to,omitempty"`
+}
+
+type IdentityListOut struct {
+	Identities []Identity `json:"identities"`
+	Note       string     `json:"note"`
+}
+
+func (t *Tools) identityList(ctx context.Context, _ *mcp.CallToolRequest, _ InAccount) (*mcp.CallToolResult, IdentityListOut, error) {
+	tok, s, acct, err := t.mailSession(ctx)
+	if err != nil {
+		return nil, IdentityListOut{}, err
+	}
+	r, err := t.JMAP.Invoke(ctx, tok, s, mailUsing, jmap.Call{Method: "Identity/get", Args: map[string]any{"accountId": acct}})
+	if err != nil {
+		return nil, IdentityListOut{}, err
+	}
+	var got struct{ List []identity }
+	_ = json.Unmarshal(r[0], &got)
+	main, err := t.fromAddress(ctx, tok, s, acct, "")
+	out := IdentityListOut{Identities: []Identity{}, Note: "Mail can be sent only from these addresses. New aliases come from the administrator."}
+	for _, i := range got.List {
+		id := Identity{Email: i.Email, Name: oneLine(i.Name, 100), Main: err == nil && strings.EqualFold(i.Email, main.Email)}
+		for _, a := range i.ReplyTo {
+			id.ReplyTo = append(id.ReplyTo, a.Email)
+		}
+		out.Identities = append(out.Identities, id)
+	}
+	slices.SortFunc(out.Identities, func(a, b Identity) int {
+		if a.Main != b.Main {
+			if a.Main {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(a.Email), strings.ToLower(b.Email))
+	})
+	return nil, out, nil
 }

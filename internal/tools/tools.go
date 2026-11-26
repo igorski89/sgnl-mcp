@@ -82,6 +82,8 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Create a mail folder (optionally inside another). In a shared mailbox the person is asked first, since everyone in it sees it."}, t.mailFolderCreate)
 	add(t, s, &mcp.Tool{Name: "mail_folder_rename", Annotations: wr,
 		Description: "Rename one of your own mail folders (not Inbox, Sent, Drafts, Trash and the other standard ones). In a shared mailbox the person is asked first. Folders are never deleted here."}, t.mailFolderRename)
+	add(t, s, &mcp.Tool{Name: "identity_list", Annotations: ro,
+		Description: "The addresses you can send from (your own and your aliases; with account: a shared mailbox's), the main one first. Pass one as from to mail_draft_create to send from it."}, t.identityList)
 	add(t, s, &mcp.Tool{Name: "mail_send", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
 		Description: "Send a draft (from Drafts) as it is. The person is asked in their app first, with every recipient shown; nothing is sent without their yes. To change the mail, update the draft first."}, t.mailSend)
 	add(t, s, &mcp.Tool{Name: "mail_draft_create", Annotations: wr,

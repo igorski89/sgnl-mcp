@@ -109,6 +109,7 @@ type MailSendOut struct {
 
 type identity struct {
 	ID      string    `json:"id"`
+	Name    string    `json:"name"`
 	Email   string    `json:"email"`
 	ReplyTo []address `json:"replyTo"`
 }
@@ -237,6 +238,9 @@ func (t *Tools) mailSend(ctx context.Context, req *mcp.CallToolRequest, in MailS
 	if accountOf(ctx) != "" {
 		// From a shared mailbox: say so first, it goes out in the team's name.
 		first = fmt.Sprintf("Send AS %s %q to %s", oneLine(e.From[0].Email, 80), oneLine(e.Subject, 60), strings.Join(shown, ", "))
+	} else if me, _ := personOf(ctx); me.Email != "" && !strings.EqualFold(e.From[0].Email, me.Email) {
+		// From another of the person's addresses (an alias): name it first.
+		first = fmt.Sprintf("Send %q FROM %s to %s", oneLine(e.Subject, 60), oneLine(e.From[0].Email, 80), strings.Join(shown, ", "))
 	}
 	if len(rs) > 3 {
 		first += fmt.Sprintf(" and %d more", len(rs)-3)

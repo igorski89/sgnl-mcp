@@ -127,7 +127,7 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 					res = map[string]any{"updated": map[string]any{}}
 				}
 			case "Identity/get":
-				res = map[string]any{"list": []map[string]any{{"id": "id1", "email": "igor@co.example"}}}
+				res = map[string]any{"list": []map[string]any{{"id": "id1", "email": "igor@co.example", "name": "Igor"}, {"id": "id2", "email": "sales@co.example", "name": "Sales"}}}
 				if args["accountId"] == "T" {
 					res = map[string]any{"list": []map[string]any{{"id": "idT", "email": "team@co.example"}}}
 				}
@@ -139,6 +139,13 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 					upd[k] = nil
 				}
 				res = map[string]any{"updated": upd}
+				if c, ok := args["create"].(map[string]any); ok {
+					created := map[string]any{}
+					for k := range c {
+						created[k] = map[string]any{"id": "new-" + k}
+					}
+					res = map[string]any{"created": created}
+				}
 			case "Email/query":
 				if args["filter"] == nil || f.list != nil {
 					res = map[string]any{"ids": []string{"d1"}}
