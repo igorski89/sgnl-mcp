@@ -126,10 +126,8 @@ func (f *fakeCal) serve(t *testing.T) *httptest.Server {
 				list := []any{}
 				for _, i := range lastIDs {
 					id := i.(string)
-					cal := map[string]any{"accountId": nil, "mayGetAvailability": true}
-					if id == "hugo" { // hugo shares free/busy with the person
-						cal["accountId"] = "H"
-					}
+					// As Stalwart: no accountId for a free/busy-only share.
+					cal := map[string]any{"accountId": nil, "mayGetAvailability": id != "anna"}
 					list = append(list, map[string]any{"id": id, "name": id + "@co.example", "email": id + "@co.example", "type": "individual",
 						"capabilities": map[string]any{jmap.Calendars: cal}})
 				}

@@ -70,12 +70,14 @@ func TestAvailability(t *testing.T) {
 	if isErr {
 		t.Fatal(txt)
 	}
-	// Local times; hugo's busy block; anna unknown (no share), never "free".
+	// Local times; hugo's busy block though his account isn't "shared" (a
+	// free/busy-only share), asked in the person's own account; anna: not allowed.
 	if !strings.Contains(txt, `"busy":[{"end":"2026-12-03T11:00","start":"2026-12-03T10:00","status":"confirmed"}]`) ||
-		!strings.Contains(txt, `"times_in":"Europe/Berlin"`) || !strings.Contains(txt, `"error":"unknown: they haven't shared their calendar`) {
+		!strings.Contains(txt, `"times_in":"Europe/Berlin"`) || !strings.Contains(txt, `"error":"the mail server doesn't let you see their availability"`) {
 		t.Errorf("availability: %s", txt)
 	}
-	if len(f.avail) != 1 || f.avail[0]["utcStart"] != "2026-12-03T07:00:00Z" || f.avail[0]["utcEnd"] != "2026-12-03T11:30:00Z" {
+	if len(f.avail) != 1 || f.avail[0]["accountId"] != "A" || f.avail[0]["id"] != "hugo" ||
+		f.avail[0]["utcStart"] != "2026-12-03T07:00:00Z" || f.avail[0]["utcEnd"] != "2026-12-03T11:30:00Z" {
 		t.Errorf("asked: %v", f.avail)
 	}
 	// A whole last day.

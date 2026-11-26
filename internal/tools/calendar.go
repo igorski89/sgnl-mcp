@@ -479,7 +479,7 @@ type AvailabilityOut struct {
 	Note   string               `json:"note"`
 }
 
-const availNote = "Only busy times from calendars each colleague shares with you (at least free/busy) are seen; with no share, nothing about them can be known. Never what the meetings are."
+const availNote = "Busy times come only from calendars each colleague shares with you (at least free/busy). An empty list means free, or that they share no calendar with you. Never what the meetings are."
 
 var principalUsing = []string{jmap.Core, jmap.Principals, jmap.Availability, jmap.Calendars}
 
@@ -490,7 +490,8 @@ type principal struct {
 	Email        string `json:"email"`
 	Type         string `json:"type"`
 	Capabilities map[string]struct {
-		AccountID string `json:"accountId"`
+		AccountID          string `json:"accountId"`
+		MayGetAvailability bool   `json:"mayGetAvailability"`
 	} `json:"capabilities"`
 }
 
@@ -566,12 +567,18 @@ func (t *Tools) availabilityGet(ctx context.Context, _ *mcp.CallToolRequest, in 
 		default:
 			p := ps[0]
 			pa.Email = p.Email
-			// The mail server names a colleague's account only once they share
-			// something with the person; without a share it answers "no busy
-			// times", which must not read as "free".
-			calAcct := p.Capabilities[jmap.Calendars].AccountID
+			// Asked in the person's own calendar account, for the colleague's
+			// principal: the mail server checks each of the colleague's
+			// calendars for a free/busy (or read) grant to the person. A
+			// free/busy-only share doesn't make their account "shared" (no
+			// accountId in Principal/get), so that can't be the test.
+			if !p.Capabilities[jmap.Calendars].MayGetAvailability {
+				pa.Error = "the mail server doesn't let you see their availability"
+				break
+			}
+			calAcct := s.PrimaryAccounts[jmap.Calendars]
 			if calAcct == "" {
-				pa.Error = "unknown: they haven't shared their calendar (not even free/busy) with you, so their busy times can't be seen. Ask them to share free/busy in their calendar app"
+				pa.Error = "you have no calendar account"
 				break
 			}
 			r, err := t.JMAP.Invoke(ctx, tok, s, principalUsing, jmap.Call{Method: "Principal/getAvailability", Args: map[string]any{

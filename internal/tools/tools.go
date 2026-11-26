@@ -124,7 +124,7 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "event_cancel", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
 		Description: "Cancel a meeting you organize (attendees get a cancellation by email) or delete a private event. The person is always asked first. To decline someone else's meeting use event_respond. For a repeating series: with occurrence (from event_list) only that meeting, without it the whole series."}, t.eventCancel)
 	add(t, s, &mcp.Tool{Name: "availability_get", Annotations: ro,
-		Description: "When colleagues are busy (free/busy only, never what their events are), e.g. to find a common free slot, over days or a time window (YYYY-MM-DDTHH:MM). Times are local (times_in). Only colleagues who share at least free/busy with you can be seen: for others it says unknown, never free."}, t.availabilityGet)
+		Description: "When colleagues are busy (free/busy only, never what their events are), e.g. to find a common free slot, over days or a time window (YYYY-MM-DDTHH:MM). Times are local (times_in). Only calendars a colleague shares with you (at least free/busy) count, so an empty list can also mean not shared."}, t.availabilityGet)
 
 	// Contacts
 	add(t, s, &mcp.Tool{Name: "contact_create", Annotations: wr,
