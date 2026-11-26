@@ -133,7 +133,7 @@ func TestMailWriteToolsOnlyWithWriteKey(t *testing.T) {
 	}{
 		{&Tools{API: read, Mail: r}, nil},
 		{&Tools{API: read, Mail: r, Write: write, Ask: &confirm.Asker{}}, nil},
-		{&Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}}, []string{"mail_alias_add", "mail_alias_remove", "mail_group_member_add", "mail_group_member_remove", "mail_quota_set"}},
+		{&Tools{API: read, Mail: r, MailWrite: w, Ask: &confirm.Asker{}}, []string{"mail_group_member_add", "mail_group_member_remove", "mail_quota_set"}},
 	} {
 		cs, _ := wsession(t, tc.at, yes)
 		res, _ := cs.ListTools(context.Background(), nil)
@@ -160,8 +160,6 @@ func TestMailSetGuard(t *testing.T) {
 	}
 	ok := []mcall{
 		up(map[string]any{"memberGroupIds": map[string]any{"g1": true}}),
-		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "a", "domainId": "d1", "enable": true}}}),
-		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "a", "domainId": "d1", "enable": true, "description": nil}, "1": map[string]any{"name": "b", "description": "x"}}}),
 		up(map[string]any{"quotas": map[string]any{"maxDiskQuota": int64(5)}}),
 		up(map[string]any{"memberGroupIds": map[string]any{}}),
 	}
@@ -184,11 +182,12 @@ func TestMailSetGuard(t *testing.T) {
 		up(map[string]any{"name": "x"}),
 		up(map[string]any{"aliases/0": map[string]any{"name": "x"}}),
 		up(map[string]any{"memberGroupIds/g1": true}),
-		up(map[string]any{"aliases": []any{}}),
 		up(map[string]any{"memberGroupIds": map[string]any{"g1": "yes"}}),
-		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "x", "secret": "y"}}}),
 		up(map[string]any{"quotas": map[string]any{"maxDiskQuota": "big"}}),
-		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "x", "description": 5}}}),
+		// Never aliases: they decide whose account a login lands in.
+		up(map[string]any{"aliases": map[string]any{"0": map[string]any{"name": "a", "domainId": "d1", "enable": true}}}),
+		up(map[string]any{"aliases": map[string]any{}}),
+		up(map[string]any{"memberGroupIds": map[string]any{"g1": true}, "aliases": map[string]any{}}),
 	}
 	for _, c := range bad {
 		if checkSet(c) == nil {
@@ -248,60 +247,6 @@ func TestMailMembers(t *testing.T) {
 	}
 }
 
-func TestMailAliases(t *testing.T) {
-	f, cs, asked := mailWriteTools(t, yes)
-	txt, isErr := call(t, cs, "mail_alias_add", map[string]any{"person": "hugo", "alias": "Sales@co.example"})
-	if isErr || !strings.Contains(txt, `"aliases":["sales@co.example"]`) {
-		t.Fatalf("add: %q", txt)
-	}
-	if q := (*asked)[0].Message; !strings.HasPrefix(q, "Give hugo the extra address sales@co.example: mail to it lands in hugo's mailbox?") {
-		t.Errorf("question: %q", q)
-	}
-	// Adding to boss keeps the disabled alias and its key.
-	if _, isErr := call(t, cs, "mail_alias_add", map[string]any{"person": "boss", "alias": "info@co.example"}); isErr {
-		t.Fatal("add to boss")
-	}
-	if got := f.get("u1", "aliases"); got != `{"0":{"description":null,"domainId":"d1","enable":true,"name":"postmaster"},"1":{"description":"kept","domainId":"d1","enable":false,"name":"old"},"2":{"domainId":"d1","enable":true,"name":"info"}}` {
-		t.Errorf("boss's aliases: %s", got)
-	}
-	if _, isErr := call(t, cs, "mail_alias_remove", map[string]any{"alias": "postmaster@co.example"}); isErr {
-		t.Fatal("remove")
-	}
-	if q := (*asked)[2].Message; !strings.HasPrefix(q, "Remove the address postmaster@co.example from boss: mail to it no longer reaches boss?") {
-		t.Errorf("question: %q", q)
-	}
-	if got := f.get("u1", "aliases"); got != `{"1":{"description":"kept","domainId":"d1","enable":false,"name":"old"},"2":{"domainId":"d1","enable":true,"name":"info"}}` {
-		t.Errorf("after remove: %s", got)
-	}
-	n, na := f.setCount(), len(*asked)
-	for _, c := range []struct {
-		tool string
-		args map[string]any
-		want string
-	}{
-		{"mail_alias_add", map[string]any{"person": "boss", "alias": "hugo@co.example"}, "already in use"},
-		{"mail_alias_add", map[string]any{"person": "boss", "alias": "contact@co.example"}, "already in use"},
-		{"mail_alias_add", map[string]any{"person": "hugo", "alias": "old@co.example"}, "already in use"},
-		{"mail_alias_add", map[string]any{"person": "hugo", "alias": "info@CO.example"}, "already in use"},
-		{"mail_alias_add", map[string]any{"person": "hugo", "alias": "x@elsewhere.example"}, "company's mail domains"},
-		{"mail_alias_add", map[string]any{"person": "hugo", "alias": "x@gmail.example"}, "company's mail domains"},
-		{"mail_alias_add", map[string]any{"person": "hugo", "alias": "Hugo <x@co.example>"}, "one plain email address"},
-		{"mail_alias_add", map[string]any{"person": "mcp-gateway", "alias": "y@co.example"}, "machine account"},
-		{"mail_alias_add", map[string]any{"person": "contact", "alias": "y@co.example"}, "not a person"},
-		{"mail_alias_remove", map[string]any{"alias": "hugo@co.example"}, "own address"},
-		{"mail_alias_remove", map[string]any{"alias": "old@co.example"}, "no alias"},
-		{"mail_alias_remove", map[string]any{"alias": "nobody@co.example"}, "no alias"},
-	} {
-		txt, isErr := call(t, cs, c.tool, c.args)
-		if !isErr || !strings.Contains(txt, c.want) {
-			t.Errorf("%s %v: %q, want %q", c.tool, c.args, txt, c.want)
-		}
-	}
-	if f.setCount() != n || len(*asked) != na {
-		t.Errorf("a refused change was asked or sent")
-	}
-}
-
 func TestMailQuota(t *testing.T) {
 	f, cs, asked := mailWriteTools(t, yes)
 	txt, isErr := call(t, cs, "mail_quota_set", map[string]any{"mailbox": "boss", "limit": "5 GB"})
@@ -349,7 +294,7 @@ func TestMailChangeDeclinedOrRefused(t *testing.T) {
 	}
 	f, cs, _ = mailWriteTools(t, yes)
 	f.refuse = true
-	if txt, isErr := call(t, cs, "mail_alias_add", map[string]any{"person": "hugo", "alias": "z@co.example"}); !isErr || !strings.Contains(txt, "refused the change: invalidProperties nope") {
+	if txt, isErr := call(t, cs, "mail_group_member_add", map[string]any{"mailbox": "alerts", "person": "hugo"}); !isErr || !strings.Contains(txt, "refused the change: invalidProperties nope") {
 		t.Errorf("notUpdated: %q", txt)
 	}
 }

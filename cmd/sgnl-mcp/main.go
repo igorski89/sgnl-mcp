@@ -46,7 +46,7 @@
 //	                        account: mail_mailboxes, mail_mailbox, mail_queue, mail_delivery
 //	                        (management JMAP on the SGNL_MCP_JMAP_URL host; never content)
 //	SGNL_MCP_STALWART_WRITE_API_KEY a second key that may also update accounts: mail_group_member_add/
-//	                        _remove, mail_alias_add/_remove, mail_quota_set, each confirmed
+//	                        _remove, mail_quota_set, each confirmed (never aliases)
 //	SGNL_MCP_MAIL_PROTECTED mail accounts never changed (default mcp-gateway,ses-relay)
 //	SGNL_MCP_ADMIN_GROUP_APPS   what the instance's own groups open, shown on group
 //	                        changes: group=text;group=text (SGNL's own groups are built in)
@@ -272,7 +272,7 @@ func main() {
 				at.MailWrite = &admin.Stalwart{Base: at.Mail.Base, Key: wkey, Write: true, HTTP: &http.Client{Timeout: 20 * time.Second}}
 				at.MailProtected = list("SGNL_MCP_MAIL_PROTECTED")
 				at.Ask = t.Asker()
-				what += "; changes to shared-mailbox members, aliases and mailbox size limits, each only after the admin confirms in their app"
+				what += "; changes to shared-mailbox members and mailbox size limits, each only after the admin confirms in their app"
 			}
 		} else if os.Getenv("SGNL_MCP_STALWART_WRITE_API_KEY") != "" {
 			log.Fatal("sgnl-mcp: SGNL_MCP_STALWART_WRITE_API_KEY needs SGNL_MCP_STALWART_API_KEY too")

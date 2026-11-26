@@ -18,22 +18,20 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Mail admin changes: who is in a shared mailbox, a person's extra
-// addresses (aliases), a mailbox's size limit. The live mail server is the
+// Mail admin changes: who is in a shared mailbox, a mailbox's size limit. The live mail server is the
 // record for these (the instance's plan in git keeps only which accounts
 // and groups exist). Through a separate key (Tools.MailWrite) so changes
 // can be switched off alone; each change is one x:Account/set with one
-// update of memberGroupIds, aliases or quotas, written whole: the server's
+// update of memberGroupIds or quotas, written whole: the server's
 // current value with this one change, bound to what the admin was shown.
-// Never: creating or deleting accounts, groups or mail; machine accounts.
+// Never: creating or deleting accounts, groups or mail; aliases; machine
+// accounts.
 
-// The only properties an update may carry, and what an alias may hold.
-var (
-	setProps = []string{"memberGroupIds", "aliases", "quotas"}
-	// description: kept as the server has it on existing aliases (it
-	// returns the key, often null); a new alias never gets one.
-	aliasProps = []string{"name", "domainId", "enable", "description"}
-)
+// The only properties an update may carry. Never aliases: with the
+// instance's login directory an alias decides whose account a login lands
+// in (an alias like newhire@ on an admin's account would put the new hire
+// into it), so aliases are changed only by the operator, on the server.
+var setProps = []string{"memberGroupIds", "quotas"}
 
 // checkSet: x:Account/set with exactly one update of setProps, each a
 // whole object of the expected shape; nothing else (no create, destroy,
@@ -69,25 +67,6 @@ func checkSet(c mcall) error {
 				case "memberGroupIds":
 					if ov != true {
 						return fmt.Errorf("x:Account/set: memberGroupIds/%s must be true", short(ok2))
-					}
-				case "aliases":
-					al, ok := ov.(map[string]any)
-					if !ok {
-						return fmt.Errorf("x:Account/set: an alias that isn't an object")
-					}
-					for ak, av := range al {
-						if !slices.Contains(aliasProps, ak) {
-							return fmt.Errorf("x:Account/set: alias property %s", short(ak))
-						}
-						if ak == "description" && av == nil {
-							continue
-						}
-						if _, s := av.(string); ak != "enable" && !s {
-							return fmt.Errorf("x:Account/set: alias %s isn't text", ak)
-						}
-						if _, b := av.(bool); ak == "enable" && !b {
-							return fmt.Errorf("x:Account/set: alias enable isn't true/false")
-						}
 					}
 				case "quotas":
 					switch ov.(type) {
@@ -130,49 +109,6 @@ func (d *mailDir) find(q string) (*MailAccount, map[string]any) {
 		}
 	}
 	return nil, nil
-}
-
-// taken: every address the server routes, enabled or not: account names
-// and addresses, every alias.
-func (d *mailDir) taken(addr string) string {
-	addr = strings.ToLower(addr)
-	for _, a := range d.raw {
-		dn := d.domains[str(a, "domainId")]
-		if strings.ToLower(str(a, "emailAddress")) == addr || strings.ToLower(str(a, "name")+"@"+dn) == addr {
-			return str(a, "name")
-		}
-		for _, al := range aliasMap(a) {
-			ad := d.domains[str(al, "domainId")]
-			if ad == "" {
-				ad = dn
-			}
-			if strings.ToLower(str(al, "name")+"@"+ad) == addr || strings.ToLower(str(al, "name")) == addr {
-				return str(a, "name")
-			}
-		}
-	}
-	return ""
-}
-
-// aliasMap: the account's aliases as the server keeps them (key → object),
-// a list read as keys "0", "1", ….
-func aliasMap(a map[string]any) map[string]map[string]any {
-	out := map[string]map[string]any{}
-	switch x := a["aliases"].(type) {
-	case map[string]any:
-		for k, v := range x {
-			if m, ok := v.(map[string]any); ok {
-				out[k] = m
-			}
-		}
-	case []any:
-		for i, v := range x {
-			if m, ok := v.(map[string]any); ok {
-				out[strconv.Itoa(i)] = m
-			}
-		}
-	}
-	return out
 }
 
 func objOf(a map[string]any, k string) map[string]any {
@@ -368,120 +304,6 @@ func (t *Tools) memberAdd(ctx context.Context, req *mcp.CallToolRequest, in Memb
 
 func (t *Tools) memberRemove(ctx context.Context, req *mcp.CallToolRequest, in MemberIn) (*mcp.CallToolResult, MailChangeOut, error) {
 	return t.memberChange(ctx, req, in, false)
-}
-
-// ---- mail_alias_add / _remove
-
-type AliasAddIn struct {
-	Person string `json:"person" jsonschema:"the person: username or address"`
-	Alias  string `json:"alias" jsonschema:"the extra address, e.g. sales@<company domain>"`
-}
-
-var reLocal = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]{0,63}$`)
-
-func (t *Tools) aliasAdd(ctx context.Context, req *mcp.CallToolRequest, in AliasAddIn) (*mcp.CallToolResult, MailChangeOut, error) {
-	addr, err := address(strings.ToLower(strings.TrimSpace(in.Alias)))
-	if err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	local, dom, _ := strings.Cut(addr, "@")
-	if !reLocal.MatchString(local) {
-		return nil, MailChangeOut{}, fmt.Errorf("%q: the part before @ may only have lowercase letters, digits, '.', '_', '+' or '-'", short(local))
-	}
-	d, err := t.mailDir(ctx)
-	if err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	did := ""
-	for id, n := range d.domains {
-		if strings.EqualFold(n, dom) {
-			did = id
-		}
-	}
-	if did == "" || (len(t.domains()) > 0 && !t.company(addr)) {
-		return nil, MailChangeOut{}, fmt.Errorf("%s isn't one of the company's mail domains", dom)
-	}
-	if who := d.taken(addr); who != "" {
-		return nil, MailChangeOut{}, fmt.Errorf("%s is already in use (by %s)", addr, who)
-	}
-	p, raw, err := t.person(ctx, d, in.Person)
-	if err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	als := map[string]any{}
-	next := 0
-	for k, v := range aliasMap(raw) {
-		als[k] = v
-		if n, err := strconv.Atoi(k); err == nil && n >= next {
-			next = n + 1
-		}
-	}
-	als[strconv.Itoa(next)] = map[string]any{"name": local, "domainId": did, "enable": true}
-	q := fmt.Sprintf("Give %s the extra address %s: mail to it lands in %s's mailbox?\n\nTheir addresses now: %s.", p.Name, addr, p.Name, strings.Join(append([]string{p.Address}, p.Aliases...), ", "))
-	if res, err := t.askMail(ctx, req, q, fp(raw, "aliases")+"|"+addr); err != nil || res != nil {
-		return res, MailChangeOut{}, err
-	}
-	if err := t.setAccount(ctx, str(raw, "id"), map[string]any{"aliases": als}); err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	return nil, MailChangeOut{Done: "added " + addr, Mailbox: t.afterChange(ctx, p.Name),
-		Note: "Done with the admin's confirmation. Mail to " + addr + " is delivered to " + p.Name + " from now on."}, nil
-}
-
-type AliasRemoveIn struct {
-	Alias string `json:"alias" jsonschema:"the extra address to remove (see mail_mailbox)"`
-}
-
-func (t *Tools) aliasRemove(ctx context.Context, req *mcp.CallToolRequest, in AliasRemoveIn) (*mcp.CallToolResult, MailChangeOut, error) {
-	addr, err := address(strings.ToLower(strings.TrimSpace(in.Alias)))
-	if err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	d, err := t.mailDir(ctx)
-	if err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	v, _ := d.find(addr)
-	if v == nil || !slices.Contains(v.Aliases, addr) {
-		if v != nil {
-			return nil, MailChangeOut{}, fmt.Errorf("%s is %s's own address, not an alias: it isn't removed here", addr, v.Name)
-		}
-		return nil, MailChangeOut{}, fmt.Errorf("no alias %s (see mail_mailbox)", short(addr))
-	}
-	if v.Kind != "person" {
-		return nil, MailChangeOut{}, fmt.Errorf("%s belongs to the shared mailbox %s: it isn't changed here", addr, v.Address)
-	}
-	p, raw, err := t.person(ctx, d, v.Name)
-	if err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	als := map[string]any{}
-	dn := d.domains[str(raw, "domainId")]
-	removed := 0
-	for k, al := range aliasMap(raw) {
-		ad := d.domains[str(al, "domainId")]
-		if ad == "" {
-			ad = dn
-		}
-		if strings.ToLower(str(al, "name")+"@"+ad) == addr {
-			removed++
-			continue
-		}
-		als[k] = al
-	}
-	if removed != 1 {
-		return nil, MailChangeOut{}, fmt.Errorf("%s is kept in an unexpected way on the mail server: ask whoever runs the instance", addr)
-	}
-	q := fmt.Sprintf("Remove the address %s from %s: mail to it no longer reaches %s?\n\nTheir other addresses stay: %s. Mail already received stays.", addr, p.Name, p.Name,
-		strings.Join(append([]string{p.Address}, slices.DeleteFunc(slices.Clone(p.Aliases), func(a string) bool { return a == addr })...), ", "))
-	if res, err := t.askMail(ctx, req, q, fp(raw, "aliases")+"|"+addr); err != nil || res != nil {
-		return res, MailChangeOut{}, err
-	}
-	if err := t.setAccount(ctx, str(raw, "id"), map[string]any{"aliases": als}); err != nil {
-		return nil, MailChangeOut{}, err
-	}
-	return nil, MailChangeOut{Done: "removed " + addr, Mailbox: t.afterChange(ctx, p.Name),
-		Note: "Done with the admin's confirmation. Mail to " + addr + " now bounces, or lands in the domain's catch-all mailbox if there is one."}, nil
 }
 
 // ---- mail_quota_set

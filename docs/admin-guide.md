@@ -26,7 +26,6 @@ Keep it separate from your everyday connection, and connect it only when you nee
 | See firing alerts, the server's disk/memory/CPU, the apps, backups, certificates | No |
 | See the mailboxes: shared ones and their members, people's addresses and aliases, space used; the outgoing mail queue | No (never any mail content) |
 | **Add someone to a shared mailbox / remove them** (if switched on) | **Yes**: you see the mailbox, who's in it and what they gain or lose |
-| **Give someone an extra address (alias) / remove one** (if switched on) | **Yes**: you see the address and whose mailbox it reaches |
 | **Set a mailbox's size limit** (if switched on) | **Yes**: you see the limit now, the new one and what it uses |
 | **Invite a new person** | **Yes**: you see the name, their future address and where the set-up link goes |
 | **Finish an invitation** | **Yes**: you see the address and the groups, with what each opens |
@@ -36,7 +35,7 @@ Keep it separate from your everyday connection, and connect it only when you nee
 | **Log someone out everywhere** | **Yes** |
 | **Disable an account** | **Yes, and you type their username** |
 | **Enable an account again** | **Yes** |
-| Delete a person, a group, a mailbox or mail; reset passwords or passkeys, lift a lockout | **Never**: done by whoever runs the instance, on the server |
+| Add or remove someone's extra addresses (aliases); delete a person, a group, a mailbox or mail; reset passwords or passkeys, lift a lockout | **Never**: done by whoever runs the instance, on the server |
 | Restart apps, run or restore backups, deploy | **Never**: done by whoever runs the instance |
 
 ## People and groups
@@ -122,15 +121,13 @@ You can't log out or disable yourself here.
 >
 > "Take Hugo out of alerts@."
 >
-> "Give Anna the address sales@ as well." / "Remove sales@ from Anna."
->
 > "Give the contact@ mailbox a 5 GB limit." / "No limit for Hugo's mailbox."
 
 - Each asks you first. The confirmation starts with the mailbox and the effect, e.g. *Add hugo to contact@your-company: they read and can send as contact@your-company?*
 - **Members:** removing someone takes away their access to the shared mailbox and its mail; the mailbox and its mail stay, and they can be added again. The last member can't be removed: add someone else first.
-- **Aliases:** only on a company domain, and only an address nobody uses yet (not a mailbox, not another alias, not even a switched-off one). A person's own address can't be removed. Mail to a removed alias bounces, or lands in the catch-all mailbox if there is one.
+- **Aliases (extra addresses) aren't changed here:** an alias also decides whose account a login lands in, so a wrong one could put someone into another person's account. Ask whoever runs the instance.
 - **Size limits:** never below what the mailbox already uses. When a mailbox is full, new mail to it bounces.
-- **What's live is what counts:** members and aliases are kept on the mail server itself, not in the instance's mail plan.
+- **What's live is what counts:** members are kept on the mail server itself, not in the instance's mail plan.
 - Not here: making or deleting mailboxes or shared mailboxes, deleting mail, and the server's own machine accounts. Ask whoever runs the instance.
 
 ## If something goes wrong

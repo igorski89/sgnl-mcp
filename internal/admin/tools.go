@@ -99,10 +99,6 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Add a person to a shared mailbox (e.g. contact@): they read it and can send as it." + asks}, t.memberAdd)
 		add(t, s, &mcp.Tool{Name: "mail_group_member_remove", Annotations: d,
 			Description: "Remove a person from a shared mailbox: they lose access to it and its mail (the mailbox and mail stay). Never its last member." + asks}, t.memberRemove)
-		add(t, s, &mcp.Tool{Name: "mail_alias_add", Annotations: w,
-			Description: "Give a person an extra address (alias) on a company domain; refused if the address is already in use." + asks}, t.aliasAdd)
-		add(t, s, &mcp.Tool{Name: "mail_alias_remove", Annotations: d,
-			Description: "Remove a person's extra address (alias): mail to it no longer reaches them. Not their own address." + asks}, t.aliasRemove)
 		add(t, s, &mcp.Tool{Name: "mail_quota_set", Annotations: w,
 			Description: "Set a mailbox's size limit (e.g. 5 GB, or 'no limit'); never below what it already uses." + asks}, t.quotaSet)
 	}
