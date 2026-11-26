@@ -168,9 +168,15 @@ func typed(s string) answer {
 // collects every question shown.
 func wsession(t *testing.T, at *Tools, a answer) (*mcp.ClientSession, *[]*mcp.ElicitParams) {
 	t.Helper()
+	return wsessionAs(t, at, a, "admins", "sgnl_users")
+}
+
+// wsessionAs: the same as "boss" with these current groups.
+func wsessionAs(t *testing.T, at *Tools, a answer, groups ...string) (*mcp.ClientSession, *[]*mcp.ElicitParams) {
+	t.Helper()
 	s := mcp.NewServer(&mcp.Implementation{Name: "a", Version: "0"}, nil)
 	at.Register(s)
-	me := auth.Claims{Sub: "s", Username: "boss", Groups: []string{"admins", "sgnl_users"}}
+	me := auth.Claims{Sub: "s", Username: "boss", Groups: groups}
 	verify := func(context.Context, string, *http.Request) (*mcpauth.TokenInfo, error) {
 		return auth.TokenInfoNow("t", me, me, time.Now().Add(time.Hour)), nil
 	}

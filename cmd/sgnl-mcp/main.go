@@ -38,6 +38,10 @@
 //	SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET (scopes authelia.admin.read + .write), each confirmed
 //	SGNL_MCP_ADMIN_USER_DOMAIN  people's company domain (<user>@it): needed for
 //	                        admin_invite and admin_finish_invite
+//	SGNL_MCP_GRAFANA_URL    monitoring (Grafana with JWT auth), e.g. https://monitor.example.com:
+//	SGNL_MCP_GRAFANA_AUDIENCE its audience at the issuer; with both, ops_alerts, ops_host,
+//	                        ops_apps, ops_backups on the admin endpoint, as the admin
+//	SGNL_MCP_CERT_HOSTS     public hosts for ops_certs (TLS expiry), comma-separated
 //	SGNL_MCP_ADMIN_GROUP_APPS   what the instance's own groups open, shown on group
 //	                        changes: group=text;group=text (SGNL's own groups are built in)
 //	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
@@ -155,7 +159,8 @@ func main() {
 	clientID := env("SGNL_MCP_CLIENT_ID", "sgnl-mcp")
 	cfg := auth.Config{Issuer: env("SGNL_MCP_ISSUER", ""), Audiences: []string{clientID, public}, ClientID: clientID,
 		ClientSecret: env("SGNL_MCP_CLIENT_SECRET", ""),
-		MailAudience: os.Getenv("SGNL_MCP_MAIL_AUDIENCE"), FilesAudience: os.Getenv("SGNL_MCP_FILES_AUDIENCE")}
+		MailAudience: os.Getenv("SGNL_MCP_MAIL_AUDIENCE"), FilesAudience: os.Getenv("SGNL_MCP_FILES_AUDIENCE"),
+		GrafanaAudience: os.Getenv("SGNL_MCP_GRAFANA_AUDIENCE")}
 	jmapURL := env("SGNL_MCP_JMAP_URL", "")
 
 	pu, err := url.Parse(public)
@@ -242,6 +247,17 @@ func main() {
 			TokenURL: gw.TokenURL(), ID: id, Secret: os.Getenv("SGNL_MCP_ADMIN_CLIENT_SECRET"),
 			Scope: "authelia.admin.read", HTTP: &http.Client{Timeout: 20 * time.Second}, Now: time.Now}}
 		what := "read-only views of accounts, groups, login attempts and account changes"
+		if g := os.Getenv("SGNL_MCP_GRAFANA_URL"); g != "" {
+			if cfg.GrafanaAudience == "" {
+				log.Fatal("sgnl-mcp: SGNL_MCP_GRAFANA_URL is set but SGNL_MCP_GRAFANA_AUDIENCE is not")
+			}
+			at.Grafana = &admin.Grafana{Base: g, Token: gw.GrafanaToken, HTTP: &http.Client{Timeout: 20 * time.Second}}
+			what += ", the instance's alerts, server and apps status and backups (read-only)"
+		}
+		at.CertHosts = list("SGNL_MCP_CERT_HOSTS")
+		if len(at.CertHosts) > 0 {
+			what += ", certificate expiry"
+		}
 		if wid := os.Getenv("SGNL_MCP_ADMIN_WRITE_CLIENT_ID"); wid != "" {
 			if os.Getenv("SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET") == "" {
 				log.Fatal("sgnl-mcp: SGNL_MCP_ADMIN_WRITE_CLIENT_ID is set but SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET is not")

@@ -104,6 +104,9 @@ type Config struct {
 	// the issuer's default audience.
 	MailAudience  string // JMAP (mail, calendar, contacts)
 	FilesAudience string // OpenCloud
+	// Grafana: required (empty: no Grafana token), since Grafana accepts
+	// only tokens naming it.
+	GrafanaAudience string
 }
 
 type Gateway struct {
@@ -324,6 +327,24 @@ func (g *Gateway) MailToken(ctx context.Context) (string, error) {
 	return tok, err
 }
 
+// GrafanaToken: a token for Grafana (monitoring), only if its identity
+// claims are the person's: Grafana creates and updates its user from it.
+func (g *Gateway) GrafanaToken(ctx context.Context) (string, error) {
+	if g.cfg.GrafanaAudience == "" {
+		return "", errors.New("monitoring isn't connected here")
+	}
+	tok, c, err := g.appToken(ctx, g.cfg.GrafanaAudience)
+	if err != nil {
+		return "", err
+	}
+	p, _ := from(ctx)
+	if d := identityDiff(p.claims, c); d != "" {
+		slog.Warn("app token refused: identity differs from the person's", "field", d, "app", "grafana")
+		return "", fmt.Errorf("the monitoring token's %s differs from your login's; refusing to call it", d)
+	}
+	return tok, nil
+}
+
 // FilesToken: the same for OpenCloud, and only if its identity claims
 // (username, name, email, groups) equal the person's: OpenCloud updates
 // the account (and its role) from the token it gets, so a token that
@@ -378,6 +399,8 @@ func (g *Gateway) policyDenied(desc, aud string) error {
 		app = "mail, calendar and contacts"
 	case g.cfg.FilesAudience:
 		app = "files"
+	case g.cfg.GrafanaAudience:
+		app = "monitoring"
 	}
 	switch {
 	case strings.Contains(desc, "does not permit this user"):

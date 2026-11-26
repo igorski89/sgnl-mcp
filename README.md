@@ -88,6 +88,25 @@ as the person's own confirmed actions):
 aren't touched: group results say to run `bin/sgnl-vault-sync`. Never:
 deleting people, passwords or passkeys, lockouts.
 
+Operations, read-only, also on the admin endpoint:
+
+| Tool | Reads |
+|---|---|
+| `ops_alerts` | alerts firing now (most severe first), silenced ones after |
+| `ops_host` | disk, memory, CPU now and their worst in 24 h, 24 h disk forecast, load, OOM kills, up since |
+| `ops_apps` | per container: running, version (from its name), started at, restarts in 24 h, memory against its limit |
+| `ops_backups` | per backup job the last success and its age, whether the last run failed; the last restore drill |
+| `ops_certs` | certificate expiry of `SGNL_MCP_CERT_HOSTS` (a TLS handshake, as any visitor) |
+
+The first four go through Grafana (`SGNL_MCP_GRAFANA_URL`) **with the admin's
+own token**, exchanged for `SGNL_MCP_GRAFANA_AUDIENCE` and sent as
+`X-JWT-Assertion` (Grafana's JWT auth, its `aud` pinned to that audience).
+The gateway holds no monitoring credential, runs only fixed queries (two
+Grafana paths, GET only) and reads no logs. Backups come from the backup
+job's own metrics (`sgnl_backup_last_success_timestamp_seconds{job}`,
+`sgnl_backup_last_run_timestamp_seconds{job}`,
+`sgnl_restore_drill_last_success_timestamp_seconds`).
+
 ## How it works
 
 - **Login:** the gateway is an OAuth 2.1 resource server. It publishes

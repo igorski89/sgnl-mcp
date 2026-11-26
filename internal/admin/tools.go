@@ -33,6 +33,11 @@ type Tools struct {
 	// Domains: the company's other mail domains (an invitation's set-up
 	// address there is marked a company mailbox).
 	Domains []string
+	// Grafana: the instance's monitoring, called as the admin (nil: no
+	// ops_alerts, ops_host, ops_apps, ops_backups).
+	Grafana *Grafana
+	// CertHosts: public hosts whose certificates ops_certs checks.
+	CertHosts []string
 	// GroupApps: what the instance's own groups open, shown when someone
 	// is added or removed (SGNL's own groups are built in).
 	GroupApps map[string]string
@@ -52,6 +57,20 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Recent login attempts (successful or not, from which IP), newest first; optionally for one person."}, t.events)
 	add(t, s, &mcp.Tool{Name: "admin_audit", Annotations: ro,
 		Description: "Recent changes to accounts and groups (who changed what), newest first; optionally for one person."}, t.audit)
+	if t.Grafana != nil {
+		add(t, s, &mcp.Tool{Name: "ops_alerts", Annotations: ro,
+			Description: "Alerts firing now (most severe first): name, severity, since when, summary; silenced ones listed after."}, t.alerts)
+		add(t, s, &mcp.Tool{Name: "ops_host", Annotations: ro,
+			Description: "The server: disk, memory and CPU now and their worst in 24 h, a 24 h disk forecast, load, out-of-memory kills, up since."}, t.host)
+		add(t, s, &mcp.Tool{Name: "ops_apps", Annotations: ro,
+			Description: "Every app container: running, deployed version, started when (≈ last deploy), restarts in 24 h, memory against its limit."}, t.appsStatus)
+		add(t, s, &mcp.Tool{Name: "ops_backups", Annotations: ro,
+			Description: "Backups: per job the last successful run and its age, whether the last run failed; the last successful restore drill."}, t.backups)
+	}
+	if len(t.CertHosts) > 0 {
+		add(t, s, &mcp.Tool{Name: "ops_certs", Annotations: ro,
+			Description: "TLS certificates of the instance's public sites: expiry and days left, soonest first; broken ones first."}, t.certs)
+	}
 	if t.Write == nil || t.Ask == nil {
 		return
 	}
