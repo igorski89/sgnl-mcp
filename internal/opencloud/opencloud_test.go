@@ -18,7 +18,7 @@ func TestOnlyReadMethods(t *testing.T) {
 func TestDownloadPathMustComeFromSearch(t *testing.T) {
 	c := New("http://127.0.0.1:1")
 	for _, p := range []string{"/ocs/v1.php/x", "https://evil/x", "/remote.php/dav/spaces/a/../../x"} {
-		if _, _, _, err := c.Download(context.Background(), "t", p, 10); err == nil || !strings.Contains(err.Error(), "files_search") {
+		if _, _, _, err := c.Download(context.Background(), "t", p, 10); err == nil || !strings.Contains(err.Error(), "path not recognised") {
 			t.Errorf("%s: got %v", p, err)
 		}
 	}
