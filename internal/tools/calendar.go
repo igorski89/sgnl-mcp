@@ -616,10 +616,11 @@ func (t *Tools) calendarsOf(ctx context.Context, tok string, s *jmap.Session, ac
 	own := acct == s.PrimaryAccounts[jmap.Calendars]
 	var out []CalendarInfo
 	for _, c := range got.List {
-		if c.MyRights != nil && !c.MyRights["mayReadItems"] {
-			continue // free/busy only: availability_get
+		if !own && !c.MyRights["mayReadItems"] {
+			continue // free/busy only (availability_get), or rights not reported
 		}
-		can := c.MyRights == nil || c.MyRights["mayWriteAll"] || c.MyRights["mayWriteOwn"]
+		// Someone else's calendar: only what its rights say (none reported: read only).
+		can := own || c.MyRights["mayWriteAll"] || c.MyRights["mayWriteOwn"]
 		out = append(out, CalendarInfo{Account: a.Name, Owner: a.Name, Name: oneLine(c.Name, 100), ID: c.ID, Yours: own,
 			CanAdd: can && !a.IsReadOnly, ReadOnly: !can || a.IsReadOnly, isDefault: c.IsDefault})
 	}

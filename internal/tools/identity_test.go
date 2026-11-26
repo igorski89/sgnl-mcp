@@ -67,6 +67,11 @@ func TestMailboxSize(t *testing.T) {
 		strings.Contains(txt, "messages_limit") || !strings.Contains(txt, `"largest_folders":[`) {
 		t.Errorf("mailbox_size: %s", txt)
 	}
+	f.noQuota = true
+	txt, isErr = callTool(t, cs, "mailbox_size", nil)
+	if isErr || !strings.Contains(txt, `"limit":"no limit set"`) || strings.Contains(txt, "used_mb") || !strings.Contains(txt, "only for mailboxes with a limit") {
+		t.Errorf("no limit: %s", txt)
+	}
 }
 
 func TestMailLabels(t *testing.T) {
@@ -93,5 +98,29 @@ func TestMailLabels(t *testing.T) {
 	}
 	if txt, _ := callTool(t, cs, "mail_read", map[string]any{"id": "d1"}); !strings.Contains(txt, `"labels":["invoices"]`) {
 		t.Errorf("read labels: %s", txt)
+	}
+}
+
+func TestDraftUpdateKeepsOrChangesTheSender(t *testing.T) {
+	asPerson(t, "igor@co.example")
+	f := newFakeMail()
+	cs := sendSession(t, f, nil, false)
+	lastFrom := func() string {
+		b, _ := json.Marshal(f.updates[len(f.updates)-2]["create"].(map[string]any)["d"].(map[string]any)["from"])
+		return string(b)
+	}
+	if txt, isErr := callTool(t, cs, "mail_draft_update", map[string]any{"id": "d1", "from": "sales@co.example"}); isErr {
+		t.Fatalf("update: %s", txt)
+	}
+	if got := lastFrom(); got != `[{"email":"sales@co.example","name":"Sales"}]` {
+		t.Errorf("switched from: %s", got)
+	}
+	// A draft already from the alias keeps it when the update doesn't say.
+	f.draft["from"] = []map[string]any{{"email": "sales@co.example"}}
+	if txt, isErr := callTool(t, cs, "mail_draft_update", map[string]any{"id": "d1", "subject": "New"}); isErr {
+		t.Fatalf("update: %s", txt)
+	}
+	if got := lastFrom(); got != `[{"email":"sales@co.example","name":"Sales"}]` {
+		t.Errorf("kept from: %s", got)
 	}
 }

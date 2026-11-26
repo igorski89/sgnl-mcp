@@ -22,10 +22,59 @@ import (
 // exhaust memory.
 
 const (
+	maxOut   = 4 << 20  // text produced, as for PDF
 	maxPart  = 32 << 20 // one XML part, unpacked
 	maxCells = 200000   // cells over all sheets
 	maxCols  = 1024     // repeated columns (ODS) shown at most
 )
+
+// out: the text produced, never more than maxOut bytes: what doesn't fit
+// is left out (and said so), checked before anything is copied, so a
+// repeated cell or string can't blow up memory.
+type out struct {
+	b    strings.Builder
+	full bool
+}
+
+func (o *out) add(ss ...string) {
+	n := 0
+	for _, s := range ss {
+		n += len(s)
+	}
+	if o.full || o.b.Len()+n > maxOut {
+		o.full = true
+		return
+	}
+	for _, s := range ss {
+		o.b.WriteString(s)
+	}
+}
+
+// line: cells separated by tabs, then a line break.
+func (o *out) line(cells []string) {
+	n := len(cells)
+	for _, c := range cells {
+		n += len(c)
+	}
+	if o.full || o.b.Len()+n > maxOut {
+		o.full = true
+		return
+	}
+	for i, c := range cells {
+		if i > 0 {
+			o.b.WriteByte('\t')
+		}
+		o.b.WriteString(c)
+	}
+	o.b.WriteByte('\n')
+}
+
+func (o *out) text() string {
+	if o.full {
+		return o.b.String() + "\n(… the rest is left out: too long to read whole)"
+	}
+	return o.b.String()
+}
 
 type ozip struct {
 	files map[string]*zip.File
@@ -69,6 +118,11 @@ func (z *ozip) read(name string) ([]byte, error) {
 	return b, nil
 }
 
+// xmlErr: a part that isn't well-formed is refused, not read half.
+func xmlErr(err error) error {
+	return fmt.Errorf("this file is damaged and can't be read (%v)", err)
+}
+
 func attr(se xml.StartElement, local string) string {
 	for _, a := range se.Attr {
 		if a.Name.Local == local {
@@ -99,8 +153,11 @@ func (z *ozip) rels(part string) (map[string]string, error) {
 	d := xml.NewDecoder(bytes.NewReader(b))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return out, xmlErr(err)
 		}
 		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "Relationship" {
 			t := attr(se, "Target")
@@ -156,8 +213,11 @@ func xlsx(data []byte) (string, error) {
 	d := xml.NewDecoder(bytes.NewReader(wb))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return "", xmlErr(err)
 		}
 		se, ok := tok.(xml.StartElement)
 		if !ok {
@@ -185,10 +245,10 @@ func xlsx(data []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var b strings.Builder
+	var b out
 	cells := 0
 	for _, sh := range sheets {
-		fmt.Fprintf(&b, "## Sheet: %s\n", sh.name)
+		b.add(fmt.Sprintf("## Sheet: %s\n", sh.name))
 		x, err := z.read(sh.part)
 		if err != nil {
 			return "", err
@@ -199,12 +259,12 @@ func xlsx(data []byte) (string, error) {
 		if err := xlsxRows(&b, x, shared, dates, date1904, &cells); err != nil {
 			return "", err
 		}
-		b.WriteString("\n")
+		b.add("\n")
 	}
 	if hidden > 0 {
-		fmt.Fprintf(&b, "(%d hidden sheet(s) left out)\n", hidden)
+		b.add(fmt.Sprintf("(%d hidden sheet(s) left out)\n", hidden))
 	}
-	return strings.TrimSpace(b.String()), nil
+	return strings.TrimSpace(b.text()), nil
 }
 
 // xlsxShared: the shared strings, phonetic hints (rPh) left out.
@@ -219,8 +279,11 @@ func xlsxShared(z *ozip) ([]string, error) {
 	d := xml.NewDecoder(bytes.NewReader(x))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return nil, xmlErr(err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -234,7 +297,7 @@ func xlsxShared(z *ozip) ([]string, error) {
 		case xml.EndElement:
 			switch t.Name.Local {
 			case "si":
-				out = append(out, cur.String())
+				out = append(out, cellText(cur.String())) // once here, not per cell
 				in = false
 			case "rPh":
 				skip--
@@ -260,8 +323,11 @@ func xlsxDateStyles(z *ozip) (map[int]bool, error) {
 	d := xml.NewDecoder(bytes.NewReader(x))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return nil, xmlErr(err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -311,7 +377,7 @@ func serialDate(v string, date1904 bool) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-func xlsxRows(b *strings.Builder, x []byte, shared []string, dates map[int]bool, date1904 bool, cells *int) error {
+func xlsxRows(b *out, x []byte, shared []string, dates map[int]bool, date1904 bool, cells *int) error {
 	hiddenCols := map[int]bool{}
 	var row []string
 	rowHidden := false
@@ -321,8 +387,11 @@ func xlsxRows(b *strings.Builder, x []byte, shared []string, dates map[int]bool,
 	d := xml.NewDecoder(bytes.NewReader(x))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return xmlErr(err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -362,19 +431,25 @@ func xlsxRows(b *strings.Builder, x []byte, shared []string, dates map[int]bool,
 				skip--
 			case "c":
 				s := val
+				if b.full {
+					return nil // nothing more fits: stop reading
+				}
 				switch cellType {
 				case "s":
 					if i, err := strconv.Atoi(val); err == nil && i >= 0 && i < len(shared) {
 						s = shared[i]
 					}
 				case "inlineStr":
-					s = inline
+					s = cellText(inline)
 				case "b":
 					s = map[string]string{"1": "TRUE", "0": "FALSE"}[val]
 				case "", "n":
 					if st, err := strconv.Atoi(cellStyle); err == nil && dates[st] && val != "" {
 						s = serialDate(val, date1904)
 					}
+				}
+				if cellType != "s" && cellType != "inlineStr" {
+					s = cellText(s)
 				}
 				if !hiddenCols[col] && s != "" && col < 16384 {
 					*cells++
@@ -384,7 +459,7 @@ func xlsxRows(b *strings.Builder, x []byte, shared []string, dates map[int]bool,
 					for len(row) <= col {
 						row = append(row, "")
 					}
-					row[col] = strings.NewReplacer("\t", " ", "\r\n", " ", "\n", " ").Replace(s)
+					row[col] = s
 				}
 				col++
 			case "row":
@@ -403,20 +478,26 @@ func xlsxRows(b *strings.Builder, x []byte, shared []string, dates map[int]bool,
 	return nil
 }
 
+var cellFlat = strings.NewReplacer("\t", " ", "\r\n", " ", "\n", " ")
+
+// cellText: a cell's text on one line (tabs and line breaks separate cells
+// and rows in the output).
+func cellText(s string) string { return cellFlat.Replace(s) }
+
 // writeRow: one line, cells separated by tabs, hidden columns and trailing
 // empty cells left out.
-func writeRow(b *strings.Builder, row []string, hiddenCols map[int]bool) {
-	var out []string
+func writeRow(b *out, row []string, hiddenCols map[int]bool) {
+	var cells []string
 	for i, c := range row {
 		if !hiddenCols[i] {
-			out = append(out, c)
+			cells = append(cells, c)
 		}
 	}
-	for len(out) > 0 && out[len(out)-1] == "" {
-		out = out[:len(out)-1]
+	for len(cells) > 0 && cells[len(cells)-1] == "" {
+		cells = cells[:len(cells)-1]
 	}
-	if len(out) > 0 {
-		b.WriteString(strings.Join(out, "\t") + "\n")
+	if len(cells) > 0 {
+		b.line(cells)
 	}
 }
 
@@ -439,8 +520,11 @@ func pptx(data []byte) (string, error) {
 	d := xml.NewDecoder(bytes.NewReader(pres))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return "", xmlErr(err)
 		}
 		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "sldId" {
 			if p := rels[relID(se)]; p != "" {
@@ -448,7 +532,7 @@ func pptx(data []byte) (string, error) {
 			}
 		}
 	}
-	var b strings.Builder
+	var b out
 	hidden, n := 0, 0
 	for _, p := range slides {
 		x, err := z.read(p)
@@ -458,13 +542,16 @@ func pptx(data []byte) (string, error) {
 		if x == nil {
 			continue
 		}
-		text, shown := drawingText(x)
+		text, shown, err := drawingText(x)
+		if err != nil {
+			return "", err
+		}
 		if !shown {
 			hidden++
 			continue
 		}
 		n++
-		fmt.Fprintf(&b, "## Slide %d\n%s\n", n, text)
+		b.add(fmt.Sprintf("## Slide %d\n%s\n", n, text))
 		srels, err := z.rels(p)
 		if err != nil {
 			return "", err
@@ -472,24 +559,24 @@ func pptx(data []byte) (string, error) {
 		for _, t := range srels {
 			if strings.Contains(t, "notesSlides/") {
 				if nx, err := z.read(t); err == nil && nx != nil {
-					if notes, _ := drawingText(nx); notes != "" {
-						fmt.Fprintf(&b, "Notes: %s\n", notes)
+					if notes, _, err := drawingText(nx); err == nil && notes != "" {
+						b.add(fmt.Sprintf("Notes: %s\n", notes))
 					}
 				}
 			}
 		}
-		b.WriteString("\n")
+		b.add("\n")
 	}
 	if hidden > 0 {
-		fmt.Fprintf(&b, "(%d hidden slide(s) left out)\n", hidden)
+		b.add(fmt.Sprintf("(%d hidden slide(s) left out)\n", hidden))
 	}
-	return strings.TrimSpace(b.String()), nil
+	return strings.TrimSpace(b.text()), nil
 }
 
 // drawingText: the text of a slide or notes part (DrawingML a:t in a:p),
 // hidden shapes left out; shown is false for a hidden slide (show="0").
 // Slide-number and date placeholders in notes are left out too.
-func drawingText(x []byte) (string, bool) {
+func drawingText(x []byte) (string, bool, error) {
 	var b strings.Builder
 	shown := true
 	// depth of the shape element we're skipping, 0 when not skipping
@@ -499,8 +586,11 @@ func drawingText(x []byte) (string, bool) {
 	d := xml.NewDecoder(bytes.NewReader(x))
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return "", false, xmlErr(err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -554,7 +644,7 @@ func drawingText(x []byte) (string, bool) {
 			}
 		}
 	}
-	return Visible(b.String()), shown
+	return Visible(b.String()), shown, nil
 }
 
 // ---- OpenDocument (.odt, .ods, .odp)
@@ -579,8 +669,11 @@ func odf(kind string, data []byte) (string, error) {
 	style := ""
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return "", xmlErr(err)
 		}
 		if se, ok := tok.(xml.StartElement); ok {
 			switch se.Name.Local {
@@ -597,7 +690,7 @@ func odf(kind string, data []byte) (string, error) {
 		}
 	}
 
-	var b strings.Builder
+	var b out
 	cells, slide := 0, 0
 	var row []string
 	var cell strings.Builder
@@ -613,8 +706,11 @@ func odf(kind string, data []byte) (string, error) {
 	var stack []bool // per open element: did it start a skip
 	for {
 		tok, err := d.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return "", xmlErr(err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -629,7 +725,7 @@ func odf(kind string, data []byte) (string, error) {
 					if hides {
 						starts = true
 					} else if skip == 0 && kind == ".ods" {
-						fmt.Fprintf(&b, "## Sheet: %s\n", attr(t, "name"))
+						b.add(fmt.Sprintf("## Sheet: %s\n", attr(t, "name")))
 						colHidden = colHidden[:0]
 					}
 				}
@@ -657,7 +753,7 @@ func odf(kind string, data []byte) (string, error) {
 					starts = true
 				} else if skip == 0 && kind == ".odp" {
 					slide++
-					fmt.Fprintf(&b, "## Slide %d\n", slide)
+					b.add(fmt.Sprintf("## Slide %d\n", slide))
 				}
 			case "p", "h", "span", "section", "frame", "custom-shape", "list-item":
 				starts = hides
@@ -670,7 +766,7 @@ func odf(kind string, data []byte) (string, error) {
 							cell.WriteString(" ")
 						}
 					} else if !paraStart {
-						b.WriteString("\n")
+						b.add("\n")
 					}
 					paraStart = false
 				}
@@ -681,7 +777,7 @@ func odf(kind string, data []byte) (string, error) {
 					if inCell {
 						cell.WriteString(w)
 					} else {
-						b.WriteString(w)
+						b.add(w)
 					}
 				}
 			case "tab":
@@ -689,7 +785,7 @@ func odf(kind string, data []byte) (string, error) {
 					if inCell {
 						cell.WriteString(" ")
 					} else {
-						b.WriteString("\t")
+						b.add("\t")
 					}
 				}
 			case "line-break":
@@ -697,7 +793,7 @@ func odf(kind string, data []byte) (string, error) {
 					if inCell {
 						cell.WriteString(" ")
 					} else {
-						b.WriteString("\n")
+						b.add("\n")
 					}
 				}
 			}
@@ -713,7 +809,7 @@ func odf(kind string, data []byte) (string, error) {
 			case "table-cell", "covered-table-cell":
 				inCell = false
 				if skip == 0 {
-					s := strings.TrimSpace(cell.String())
+					s := strings.TrimSpace(cellText(cell.String()))
 					for range cellRepeat {
 						if colIdx < len(colHidden) && colHidden[colIdx] {
 							row = append(row, "\x00")
@@ -740,22 +836,22 @@ func odf(kind string, data []byte) (string, error) {
 					for len(out) > 0 && out[len(out)-1] == "" {
 						out = out[:len(out)-1]
 					}
-					if len(out) > 0 {
-						line := strings.Join(out, "\t") + "\n"
-						for range min(rowRepeat, 100) {
-							b.WriteString(line)
+					for range min(rowRepeat, 100) {
+						if len(out) == 0 || b.full {
+							break
 						}
+						b.line(out)
 					}
 					paraStart = true
 				}
 			case "table":
 				if skip == 0 && kind == ".ods" {
-					b.WriteString("\n")
+					b.add("\n")
 					paraStart = true
 				}
 			case "page":
 				if skip == 0 && kind == ".odp" {
-					b.WriteString("\n\n")
+					b.add("\n\n")
 					paraStart = true
 				}
 			}
@@ -772,9 +868,9 @@ func odf(kind string, data []byte) (string, error) {
 			if inCell {
 				cell.Write(t)
 			} else if inPara > 0 {
-				b.Write(t)
+				b.add(string(t))
 			}
 		}
 	}
-	return strings.TrimSpace(b.String()), nil
+	return strings.TrimSpace(b.text()), nil
 }

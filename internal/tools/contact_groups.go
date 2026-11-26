@@ -28,6 +28,21 @@ type rawCard struct {
 	Emails map[string]struct{ Address string } `json:"emails"`
 }
 
+// normUID: a uid as a member key may name it: apps write a card's UID
+// bare and the group's MEMBER as urn:uuid:<uid>, or both with the prefix.
+func normUID(u string) string {
+	u = strings.ToLower(strings.TrimSpace(u))
+	return strings.TrimPrefix(u, "urn:uuid:")
+}
+
+// memberKey: how a new member is written (a URI, as vCard MEMBER needs).
+func memberKey(uid string) string {
+	if strings.Contains(uid, ":") {
+		return uid
+	}
+	return "urn:uuid:" + uid
+}
+
 func (c rawCard) name() string { return oneLine(c.Name.Full, 100) }
 
 func (c rawCard) email() string {
@@ -85,7 +100,7 @@ func groupsOf(cards []rawCard) []ContactGroup {
 	byUID := map[string]rawCard{}
 	for _, c := range cards {
 		if c.UID != "" {
-			byUID[c.UID] = c
+			byUID[normUID(c.UID)] = c
 		}
 	}
 	out := []ContactGroup{}
@@ -98,7 +113,7 @@ func groupsOf(cards []rawCard) []ContactGroup {
 			if !on {
 				continue
 			}
-			if m, ok := byUID[uid]; ok {
+			if m, ok := byUID[normUID(uid)]; ok {
 				g.Members = append(g.Members, GroupMember{m.ID, m.name(), m.email()})
 			} else {
 				g.Unknown++
@@ -157,8 +172,8 @@ func memberUIDs(cards []rawCard, refs []string) ([]string, error) {
 		case hit[0].UID == "":
 			return nil, fmt.Errorf("the contact %q can't be put in a group (it has no uid)", hit[0].name())
 		}
-		if !slices.Contains(out, hit[0].UID) {
-			out = append(out, hit[0].UID)
+		if k := memberKey(hit[0].UID); !slices.Contains(out, k) {
+			out = append(out, k)
 		}
 	}
 	return out, nil
@@ -290,23 +305,34 @@ func (t *Tools) contactGroupUpdate(ctx context.Context, _ *mcp.CallToolRequest, 
 		if err != nil {
 			return nil, ContactGroupOut{}, err
 		}
-		members := map[string]any{}
+		members := map[string]any{} // as written; members not in the address book are kept
 		for u, on := range g.Members {
 			if on {
-				members[u] = true // members not in the address book are kept
+				members[u] = true
 			}
+		}
+		keyOf := func(u string) (string, bool) {
+			for k := range members {
+				if normUID(k) == normUID(u) {
+					return k, true
+				}
+			}
+			return "", false
 		}
 		for _, u := range rem {
-			if _, ok := members[u]; !ok {
+			k, ok := keyOf(u)
+			if !ok {
 				return nil, ContactGroupOut{}, fmt.Errorf("a contact to remove isn't in the group %q", g.name())
 			}
-			delete(members, u)
+			delete(members, k)
 		}
 		for _, u := range add {
-			if slices.Contains(rem, u) {
+			if slices.ContainsFunc(rem, func(r string) bool { return normUID(r) == normUID(u) }) {
 				return nil, ContactGroupOut{}, fmt.Errorf("a contact is both added and removed")
 			}
-			members[u] = true
+			if _, ok := keyOf(u); !ok {
+				members[u] = true
+			}
 		}
 		patch["members"] = members
 	}

@@ -183,3 +183,48 @@ func TestOfficeRefusals(t *testing.T) {
 		t.Error("odg read")
 	}
 }
+
+// A small file that would expand into gigabytes of text: cut at maxOut.
+func TestOfficeOutputCapped(t *testing.T) {
+	big := strings.Repeat("x", 1<<20)
+	var rows strings.Builder
+	for i := 0; i < 100; i++ {
+		rows.WriteString(`<row>`)
+		for j := 0; j < 100; j++ {
+			rows.WriteString(`<c t="s"><v>0</v></c>`)
+		}
+		rows.WriteString(`</row>`)
+	}
+	xl := mkzip(t, map[string]string{
+		"xl/workbook.xml":            `<workbook><sheets><sheet name="S" r:id="r1" xmlns:r="x"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": rels("r1", "worksheets/s.xml"),
+		"xl/sharedStrings.xml":       `<sst><si><t>` + big + `</t></si></sst>`,
+		"xl/worksheets/s.xml":        `<worksheet><sheetData>` + rows.String() + `</sheetData></worksheet>`,
+	})
+	ods := mkzip(t, map[string]string{"content.xml": odfHead + `<office:body><office:spreadsheet><table:table table:name="S">` +
+		`<table:table-row table:number-rows-repeated="1000000"><table:table-cell table:number-columns-repeated="1024"><text:p>` + big + `</text:p></table:table-cell></table:table-row>` +
+		`</table:table></office:spreadsheet></office:body></office:document-content>`})
+	for name, data := range map[string][]byte{"a.xlsx": xl, "a.ods": ods} {
+		got, err := Extract(name, "", data, false)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(got) > maxOut+200 || !strings.HasSuffix(got, "too long to read whole)") {
+			t.Errorf("%s: %d bytes, ends %q", name, len(got), got[max(0, len(got)-60):])
+		}
+	}
+}
+
+func TestOfficeDamaged(t *testing.T) {
+	xl := mkzip(t, map[string]string{
+		"xl/workbook.xml":            `<workbook><sheets><sheet name="S" r:id="r1" xmlns:r="x"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": rels("r1", "worksheets/s.xml"),
+		"xl/worksheets/s.xml":        `<worksheet><sheetData><row><c><v>1</v></c></row><row><c><v>2</v></c></row`,
+	})
+	if _, err := Extract("a.xlsx", "", xl, false); err == nil || !strings.Contains(err.Error(), "damaged") {
+		t.Errorf("damaged sheet: %v", err)
+	}
+	if _, err := Extract("a.odt", "", mkzip(t, map[string]string{"content.xml": odfHead + `<office:body><text:p>a</text:p>`}), false); err == nil {
+		t.Error("damaged odt read")
+	}
+}

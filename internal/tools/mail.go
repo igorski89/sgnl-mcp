@@ -1146,12 +1146,13 @@ func (t *Tools) identityList(ctx context.Context, _ *mcp.CallToolRequest, _ InAc
 // ---- mailbox_size: how much of their mail space the person uses.
 
 type MailboxSizeOut struct {
-	UsedMB   float64       `json:"used_mb"`
+	UsedMB   *float64      `json:"used_mb,omitempty"`
 	LimitMB  *float64      `json:"limit_mb,omitempty"`
 	Limit    string        `json:"limit,omitempty"`
 	Percent  *int          `json:"percent_used,omitempty"`
 	Messages *int          `json:"messages_limit,omitempty" jsonschema:"a limit on the number of messages, if there is one"`
 	Folders  []FolderCount `json:"largest_folders" jsonschema:"by number of messages (the mail server doesn't report folder sizes)"`
+	Note     string        `json:"note,omitempty"`
 }
 
 type FolderCount struct {
@@ -1181,15 +1182,14 @@ func (t *Tools) mailboxSize(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 	_ = json.Unmarshal(r[0], &got)
 	out := MailboxSizeOut{Folders: []FolderCount{}}
 	round1 := func(f float64) float64 { return float64(int(f*10+0.5)) / 10 }
-	found := false
 	for _, q := range got.List {
 		if q.Scope != "" && q.Scope != "account" {
 			continue
 		}
 		switch q.ResourceType {
 		case "octets":
-			found = true
-			out.UsedMB = round1(q.Used / (1 << 20))
+			u := round1(q.Used / (1 << 20))
+			out.UsedMB = &u
 			if q.HardLimit != nil && *q.HardLimit > 0 {
 				l := round1(*q.HardLimit / (1 << 20))
 				p := int(q.Used * 100 / *q.HardLimit)
@@ -1202,11 +1202,12 @@ func (t *Tools) mailboxSize(ctx context.Context, _ *mcp.CallToolRequest, _ struc
 			}
 		}
 	}
-	if !found {
-		return nil, MailboxSizeOut{}, fmt.Errorf("the mail server doesn't report this mailbox's size")
-	}
 	if out.LimitMB == nil {
+		// Stalwart reports usage only for a mailbox with a limit.
 		out.Limit = "no limit set"
+		if out.UsedMB == nil {
+			out.Note = "The mail server reports how much is used only for mailboxes with a limit; this one has none."
+		}
 	}
 	if mbs, err := t.mailboxes(ctx, tok, s, acct); err == nil {
 		slices.SortFunc(mbs, func(a, b mailbox) int { return b.TotalEmails - a.TotalEmails })

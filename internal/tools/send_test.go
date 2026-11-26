@@ -37,6 +37,7 @@ type fakeMail struct {
 	folders     []map[string]any // Mailbox/set calls
 	cards       map[string]any   // non-nil: an address book with these cards
 	cardSets    []map[string]any // ContactCard/set calls
+	noQuota     bool             // the mailbox has no limit
 }
 
 func newFakeMail() *fakeMail {
@@ -150,6 +151,10 @@ func (f *fakeMail) serve(t *testing.T) *httptest.Server {
 					res = map[string]any{"updated": map[string]any{}}
 				}
 			case "Quota/get":
+				if f.noQuota { // as Stalwart for a mailbox without a limit
+					res = map[string]any{"list": []any{}}
+					break
+				}
 				res = map[string]any{"list": []map[string]any{
 					{"id": "q1", "resourceType": "octets", "scope": "account", "used": 300 << 20, "hardLimit": 1 << 30, "types": []string{"Mail"}},
 					{"id": "q2", "resourceType": "count", "scope": "domain", "used": 9, "hardLimit": 5}}}

@@ -70,7 +70,7 @@ Anything that needs your confirmation (sending email, invitations, sharing, chan
 >
 > "Which folders do I have, and where's unread mail waiting?"
 
-The assistant can read attachments and files in PDF, Word, Excel, PowerPoint, OpenDocument (LibreOffice), CSV and plain-text formats. Spreadsheets come as rows per sheet, presentations per slide with speaker notes. Hidden sheets, rows, columns, slides and text are left out on purpose, since hidden content is a common way to slip instructions to an AI.
+The assistant can read attachments and files in PDF, Word, Excel, PowerPoint, OpenDocument (LibreOffice), CSV and plain-text formats. Spreadsheets come as rows per sheet, presentations per slide (PowerPoint with speaker notes). Hidden sheets, rows, columns, slides and text are left out on purpose, since hidden content is a common way to slip instructions to an AI.
 
 **Writing**
 
