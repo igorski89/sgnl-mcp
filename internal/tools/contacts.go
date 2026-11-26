@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -28,6 +29,7 @@ type Contact struct {
 
 type ContactSearchOut struct {
 	Contacts []Contact `json:"contacts"`
+	Note     string    `json:"note,omitempty"`
 }
 
 func (t *Tools) contactSearch(ctx context.Context, _ *mcp.CallToolRequest, in ContactSearchIn) (*mcp.CallToolResult, ContactSearchOut, error) {
@@ -61,7 +63,13 @@ func (t *Tools) contactSearch(ctx context.Context, _ *mcp.CallToolRequest, in Co
 	if acct == "" {
 		acct = s.PrimaryAccounts[jmap.Mail]
 	}
-	if ps, err := t.findPrincipals(ctx, tok, s, acct, in.Query, in.Limit); err == nil {
+	ps, err := t.findPrincipals(ctx, tok, s, acct, in.Query, in.Limit)
+	if err != nil {
+		// Said, not swallowed: Stalwart refuses directory queries unless the
+		// administrator allows them.
+		slog.Warn("contact_search: company directory not searched", "error", err.Error())
+		out.Note = "The company directory couldn't be searched (" + oneLine(err.Error(), 160) + "); only your address book was. Ask whoever runs the instance to allow directory queries on the mail server."
+	} else {
 		for _, p := range ps {
 			name := p.Description
 			if name == "" {

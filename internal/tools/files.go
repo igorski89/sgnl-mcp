@@ -52,7 +52,7 @@ func (t *Tools) fileSearch(ctx context.Context, _ *mcp.CallToolRequest, in FileS
 // ---- file_read
 
 type FileReadIn struct {
-	Path string `json:"path" jsonschema:"path from file_search or folder_list"`
+	Path string `json:"path" jsonschema:"the file: a path from file_search or folder_list, or a short one like /notes.md (personal space)"`
 }
 
 type FileReadOut struct {
@@ -68,11 +68,20 @@ func (t *Tools) fileRead(ctx context.Context, _ *mcp.CallToolRequest, in FileRea
 	if err != nil {
 		return nil, FileReadOut{}, err
 	}
-	data, ctype, truncated, err := t.Files.Download(ctx, tok, in.Path, maxDownload)
+	p := strings.TrimSpace(in.Path)
+	if !strings.HasPrefix(p, "/remote.php/") {
+		// A short path like /notes.md: in the personal space.
+		spaces, err := t.Files.Spaces(ctx, tok)
+		if err != nil {
+			return nil, FileReadOut{}, err
+		}
+		p = personalPath(spaces, p)
+	}
+	data, ctype, truncated, err := t.Files.Download(ctx, tok, p, maxDownload)
 	if err != nil {
 		return nil, FileReadOut{}, err
 	}
-	name := path.Base(in.Path)
+	name := path.Base(p)
 	if u, err := url.PathUnescape(name); err == nil {
 		name = u
 	}

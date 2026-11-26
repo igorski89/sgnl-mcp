@@ -215,3 +215,15 @@ func TestReadIsExactForEditableText(t *testing.T) {
 		t.Fatalf("read %q as %q", out.Name, out.Text)
 	}
 }
+
+// Live test: a short personal path (as file_share and file_edit take) was
+// refused by file_read.
+func TestReadShortPersonalPath(t *testing.T) {
+	f := newDrive()
+	f.set("/remote.php/dav/spaces/p/Müller notes.md", "hello\n")
+	cs := editSession(t, f, nil)
+	r, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "file_read", Arguments: map[string]any{"path": "/Müller notes.md"}})
+	if err != nil || r.IsError || !strings.Contains(resultText(r), `"text":"hello\n"`) {
+		t.Fatalf("short path: %v %s", err, resultText(r))
+	}
+}

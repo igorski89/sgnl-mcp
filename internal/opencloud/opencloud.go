@@ -157,7 +157,7 @@ func parse(b []byte) ([]File, error) {
 // Download: at most max bytes of the file at path (a path from Search).
 func (c *Client) Download(ctx context.Context, token, path string, max int64) (data []byte, contentType string, truncated bool, err error) {
 	if !strings.HasPrefix(path, davPrefix) || strings.Contains(path, "..") {
-		return nil, "", false, fmt.Errorf("path must come from files_search")
+		return nil, "", false, fmt.Errorf("path not recognised: use a path from file_search or folder_list, or a short one like /notes.md")
 	}
 	resp, err := c.do(ctx, token, "GET", path, nil, nil)
 	if err != nil {
