@@ -78,7 +78,12 @@ func findMail(k, subject string) func(*Runner, callOut) error {
 
 func contains(field string, subs ...string) func(*Runner, callOut) error {
 	return func(r *Runner, o callOut) error {
-		s := fmt.Sprint(get(o.out, field))
+		var s string
+		if field == "" {
+			s = fmt.Sprint(o.out)
+		} else {
+			s = fmt.Sprint(get(o.out, field))
+		}
 		for _, x := range subs {
 			if !strings.Contains(s, x) {
 				return fmt.Errorf("%s doesn't contain %q", field, x)
@@ -136,7 +141,7 @@ func Steps() []Step {
 		{Name: "B reads it", Who: B, Tool: "mail_read", Needs: []string{"b_msg"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("b_msg")} },
 			Check: contains("text", "updated")},
 		{Name: "B reads the thread", Who: B, Tool: "mail_thread_read", Needs: []string{"b_msg"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("b_msg")} }},
-		{Name: "B flags it", Who: B, Tool: "mail_flag", Write: true, Needs: []string{"b_msg"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "B flags it", Who: B, Tool: "mail_flag", Write: true, Needs: []string{"b_msg"}, Expect: ifAsked(tag), Args: func(r *Runner) map[string]any {
 			return map[string]any{"ids": []string{r.v("b_msg")}, "read": true, "starred": true, "add_labels": []string{"smoke"}}
 		}},
 		{Name: "B finds it by label", Who: B, Tool: "mail_search", Needs: []string{"b_msg"}, Poll: 30 * time.Second, Args: func(*Runner) map[string]any { return map[string]any{"label": "smoke"} },
@@ -359,22 +364,22 @@ func Steps() []Step {
 		}},
 
 		// ---- calendar
-		{Name: "private event", Who: A, Tool: "event_create", Write: true, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "private event", Who: B, Tool: "event_create", Write: true, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"title": tag + " private " + r.run, "start": r.day(3) + "T10:00", "minutes": 30}
 		}, Check: set("a_ev", "id")},
-		{Name: "read it", Who: A, Tool: "event_read", Needs: []string{"a_ev"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_ev")} },
+		{Name: "read it", Who: B, Tool: "event_read", Needs: []string{"a_ev"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_ev")} },
 			Check: func(r *Runner, o callOut) error { return contains("", "private "+r.run)(r, o) }},
-		{Name: "move it", Who: A, Tool: "event_update", Write: true, Needs: []string{"a_ev"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "move it", Who: B, Tool: "event_update", Write: true, Needs: []string{"a_ev"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
 			return map[string]any{"id": r.v("a_ev"), "title": tag + " private " + r.run + " moved", "minutes": 45}
 		}},
-		{Name: "list it", Who: A, Tool: "event_list", Needs: []string{"a_ev"}, Args: func(r *Runner) map[string]any { return map[string]any{"from": r.day(3), "to": r.day(3)} },
+		{Name: "list it", Who: B, Tool: "event_list", Needs: []string{"a_ev"}, Args: func(r *Runner) map[string]any { return map[string]any{"from": r.day(3), "to": r.day(3)} },
 			Check: func(r *Runner, o callOut) error {
 				if find(glist(o.out, "events"), "title", "private "+r.run+" moved") == nil {
 					return errors.New("the moved event isn't listed")
 				}
 				return nil
 			}},
-		{Name: "cancel it", Who: A, Tool: "event_cancel", Write: true, Needs: []string{"a_ev"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_ev")} }},
+		{Name: "cancel it", Who: B, Tool: "event_cancel", Write: true, Needs: []string{"a_ev"}, Expect: ifAsked(), Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_ev")} }},
 		{Name: "invite B", Who: A, Tool: "event_invite", Write: true, Args: func(r *Runner) map[string]any {
 			return map[string]any{"title": tag + " meeting " + r.run, "start": r.day(3) + "T11:00", "minutes": 30, "attendees": []string{r.people.B}}
 		}, Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run, r.people.B}} }, Check: set("a_inv", "id")},
@@ -409,11 +414,13 @@ func Steps() []Step {
 		{Name: "A cancels the meeting", Who: A, Tool: "event_cancel", Write: true, Needs: []string{"a_inv"}, Expect: accept(), Args: func(r *Runner) map[string]any { return map[string]any{"id": r.v("a_inv")} }},
 
 		// ---- out of office: a window a month ahead, then off
-		{Name: "out of office on", Who: B, Tool: "out_of_office_set", Write: true, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
+		{Name: "out of office on", Who: B, Tool: "out_of_office_set", Write: true, Expect: func(*Runner) Expect {
+			return Expect{Dialog: AcceptIfAsked, Must: []string{"automatic reply"}, Outward: true, Unnamed: true}
+		}, Args: func(r *Runner) map[string]any {
 			return map[string]any{"on": true, "from": r.day(30), "to": r.day(31), "subject": tag + " away " + r.run, "text": "Away (smoke test " + r.run + ")."}
 		}},
 		{Name: "read it", Who: B, Tool: "out_of_office_get", Check: func(r *Runner, o callOut) error { return contains("text", r.run)(r, o) }},
-		{Name: "out of office off", Who: B, Tool: "out_of_office_set", Write: true, Expect: ifAsked(), Args: func(*Runner) map[string]any { return map[string]any{"on": false} }},
+		{Name: "out of office off", Who: B, Tool: "out_of_office_set", Write: true, Expect: func(*Runner) Expect { return Expect{Dialog: AcceptIfAsked, Unnamed: true} }, Args: func(*Runner) map[string]any { return map[string]any{"on": false} }},
 
 		// ---- contacts
 		{Name: "contact", Who: A, Tool: "contact_create", Write: true, Expect: ifAsked(), Args: func(r *Runner) map[string]any {
@@ -486,6 +493,13 @@ func Run(ctx context.Context, cfg Config) (*Runner, error) {
 		cfg.Outside = "smoke-outside@example.com"
 	}
 	r := &Runner{cfg: cfg, p: map[string]*person{}, vars: map[string]string{}, run: newRunID(cfg.Now())}
+	sweep := !cfg.ReadOnly
+	if len(cfg.Only) > 0 {
+		sweep = false // only what was asked for; a full run sweeps
+		for _, s := range Steps() {
+			sweep = sweep || (s.Write && slices.Contains(cfg.Only, s.Tool))
+		}
+	}
 	for i, k := range []string{"A", "B"} {
 		a := cfg.Accounts[i]
 		if err := a.Login.Load(); err != nil {
@@ -515,7 +529,7 @@ func Run(ctx context.Context, cfg Config) (*Runner, error) {
 		return r, err
 	}
 	r.offer = offered
-	if !cfg.ReadOnly {
+	if sweep {
 		r.sweep(ctx, "sweep (leftovers)")
 	}
 	for _, s := range Steps() {
@@ -531,8 +545,9 @@ func Run(ctx context.Context, cfg Config) (*Runner, error) {
 		}
 		r.step(ctx, s)
 	}
-	if !cfg.ReadOnly {
+	if sweep {
 		r.sweep(ctx, "clean-up")
+		r.leftovers(ctx)
 	}
 	return r, nil
 }
@@ -570,7 +585,7 @@ func (r *Runner) guard(ctx context.Context) error {
 	if r.p["A"].user == r.p["B"].user || strings.EqualFold(r.p["A"].email, r.p["B"].email) {
 		return errors.New("both token files are the same account")
 	}
-	r.people = People{A: r.p["A"].email, B: r.p["B"].email, Shared: r.cfg.Shared}
+	r.people = People{A: r.p["A"].email, B: r.p["B"].email, Shared: r.cfg.Shared, Run: r.run}
 	return nil
 }
 
@@ -628,6 +643,9 @@ func (r *Runner) step(ctx context.Context, s Step) {
 		o, err := r.call(ctx, r.p[s.Who], s.Tool, args, exp)
 		ms := time.Since(start).Milliseconds()
 		switch {
+		case errors.Is(err, errLimited):
+			r.add(s.Name, s.Tool, "rate-limited", ms, "the gateway's per-person limit: runs need about 20 minutes between them")
+			return
 		case err != nil:
 			r.add(s.Name, s.Tool, "failed", ms, err.Error()+tail(o.err))
 			return

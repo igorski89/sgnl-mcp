@@ -39,11 +39,18 @@ type Expect struct {
 	// From: the sender address an accepted question must name, if it has
 	// a "From:" line (default: the acting account's).
 	From string
+	// Unnamed: an accepted question needn't name a [smoke] item or the run
+	// (for a dialog that shows no names).
+	Unnamed bool
+	// Outward: the question may say OUTSIDE (switching on an automatic
+	// reply always does: it answers anyone who writes).
+	Outward bool
 }
 
-// People: the addresses an accepted question may name.
+// People: the addresses an accepted question may name, and the run's id.
 type People struct {
 	A, B, Shared string
+	Run          string
 }
 
 var reEmail = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
@@ -65,7 +72,10 @@ func Decide(msg string, e Expect, p People, actor string) (accept bool, problem 
 	case Decline:
 		return false, ""
 	}
-	if strings.Contains(msg, "OUTSIDE") {
+	if !e.Unnamed && !strings.Contains(msg, "[smoke]") && (p.Run == "" || !strings.Contains(msg, p.Run)) {
+		return false, "the question names no [smoke] item"
+	}
+	if strings.Contains(msg, "OUTSIDE") && !e.Outward {
 		return false, "the question says something goes OUTSIDE the company"
 	}
 	ok := map[string]bool{}

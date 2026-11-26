@@ -3,7 +3,6 @@ package smoke
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 )
@@ -124,16 +123,76 @@ func (r *Runner) sweep(ctx context.Context, label string) {
 				sw(who, "file_unshare", map[string]any{"path": "/" + gstr(s, "name"), "with": with}, p.user+": unshare "+gstr(s, "name"), ifAsk)
 			}
 		}
-		var gone []string
-		for _, f := range glist(read(who, "file_search", map[string]any{"query": "smoke", "limit": 50}), "files") {
-			path := gstr(f, "path")
-			if !strings.HasPrefix(gstr(f, "name"), tag) || slices.ContainsFunc(gone, func(g string) bool { return strings.HasPrefix(path, g+"/") }) {
-				continue
+		// Files: the top of the personal space, listed (search may lag).
+		for _, f := range glist(read(who, "folder_list", map[string]any{"path": "/"}), "files") {
+			if strings.HasPrefix(gstr(f, "name"), tag) {
+				sw(who, "file_trash", map[string]any{"path": gstr(f, "path")}, p.user+": file "+gstr(f, "name"), Expect{Dialog: Accept})
 			}
-			sw(who, "file_trash", map[string]any{"path": path}, p.user+": file "+gstr(f, "name"), ifAsk)
-			gone = append(gone, path)
 		}
 	}
+}
+
+// leftovers: after the clean-up, nothing named [smoke] remains (but the
+// permanent mail folder); one row, failed with what's left. Mail is
+// searched for a while, since a search index may lag behind.
+func (r *Runner) leftovers(ctx context.Context) {
+	start := time.Now()
+	var left []string
+	look := func(who, tool string, args map[string]any) map[string]any {
+		if !r.offer[tool] {
+			return nil
+		}
+		o, err := r.call(ctx, r.p[who], tool, args, Expect{})
+		if err != nil || o.err != "" {
+			left = append(left, fmt.Sprintf("%s: %s couldn't be checked", r.p[who].user, tool))
+			return nil
+		}
+		return o.out
+	}
+	for _, who := range []string{"A", "B"} {
+		u := r.p[who].user
+		for _, f := range glist(look(who, "folder_list", map[string]any{"path": "/"}), "files") {
+			if strings.HasPrefix(gstr(f, "name"), tag) {
+				left = append(left, u+": file "+gstr(f, "name"))
+			}
+		}
+		for _, ev := range glist(look(who, "event_list", map[string]any{"from": r.day(-1), "to": r.day(42)}), "events") {
+			if strings.Contains(gstr(ev, "title"), tag) && gstr(ev, "status") != "cancelled" {
+				left = append(left, u+": event "+gstr(ev, "title"))
+			}
+		}
+		for _, c := range glist(look(who, "contact_search", map[string]any{"query": "smoke", "limit": 50}), "contacts") {
+			if strings.HasPrefix(gstr(c, "name"), tag) {
+				left = append(left, u+": contact "+gstr(c, "name"))
+			}
+		}
+		for _, g := range glist(look(who, "contact_groups", nil), "groups") {
+			if strings.HasPrefix(gstr(g, "name"), tag) {
+				left = append(left, u+": group "+gstr(g, "name"))
+			}
+		}
+		if o := look(who, "out_of_office_get", nil); get(o, "on") == true && strings.Contains(gstr(o, "text"), "smoke test") {
+			left = append(left, u+": out of office still on")
+		}
+		if fl := look(who, "mailbox_list", nil); fl != nil {
+			trash := map[string]bool{}
+			for _, f := range glist(fl, "folders") {
+				if gstr(f, "role") == "trash" {
+					trash[gstr(f, "name")] = true
+				}
+			}
+			for _, m := range glist(look(who, "mail_search", map[string]any{"query": r.run, "limit": 50}), "messages") {
+				if strings.Contains(gstr(m, "subject"), tag) && !trash[gstr(m, "folder")] {
+					left = append(left, u+": mail "+gstr(m, "subject")+" in "+gstr(m, "folder"))
+				}
+			}
+		}
+	}
+	if len(left) > 0 {
+		r.add("nothing left", "", "failed", time.Since(start).Milliseconds(), strings.Join(left, "; "))
+		return
+	}
+	r.add("nothing left", "", "ok", time.Since(start).Milliseconds(), "")
 }
 
 func hasName(items []map[string]any, name string) bool {

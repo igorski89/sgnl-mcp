@@ -144,7 +144,9 @@ func (r *Runner) call(ctx context.Context, p *person, tool string, args map[stri
 		p.mu.Lock()
 		p.expect, p.asked, p.problem = exp, nil, ""
 		p.mu.Unlock()
-		res, err := p.cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+		cctx, cancel := context.WithTimeout(ctx, callTimeout)
+		res, err := p.cs.CallTool(cctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+		cancel()
 		if err != nil {
 			return callOut{}, err
 		}
@@ -163,10 +165,13 @@ func (r *Runner) call(ctx context.Context, p *person, tool string, args map[stri
 				o.err = "error"
 			}
 		}
-		if strings.Contains(o.err, "in a short time: wait a minute") && try < 3 {
-			r.cfg.logf("  (rate limited, waiting 40 s)")
+		if strings.Contains(o.err, "in a short time: wait a minute") {
+			if try >= 3 {
+				return o, errLimited
+			}
+			r.cfg.logf("  (rate limited, waiting 65 s)")
 			select {
-			case <-time.After(40 * time.Second):
+			case <-time.After(65 * time.Second):
 				continue
 			case <-ctx.Done():
 				return o, ctx.Err()
@@ -191,6 +196,14 @@ func (r *Runner) call(ctx context.Context, p *person, tool string, args map[stri
 		return o, nil
 	}
 }
+
+// callTimeout: longer than the gateway's own per-call limit and a
+// question's lifetime, so a stalled call fails its step instead of
+// hanging the run.
+const callTimeout = 4 * time.Minute
+
+// errLimited: the gateway's per-person rate limit, still after waiting.
+var errLimited = errors.New("rate limited")
 
 // ---- reading answers
 

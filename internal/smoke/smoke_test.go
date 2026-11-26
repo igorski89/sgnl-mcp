@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/igorski89/sgnl-mcp/internal/auth"
+	"github.com/igorski89/sgnl-mcp/internal/confirm"
+	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -42,9 +45,14 @@ func TestDecide(t *testing.T) {
 		{"a colleague who isn't a test account", sendStranger, Expect{Dialog: Accept}, false, true},
 		{"from someone else", sendFromOther, Expect{Dialog: Accept, Allow: []string{"ceo@co.example"}}, false, true},
 		{"no question expected", send, Expect{}, false, true},
+		{"names no [smoke] item", "Move 1 mail(s) to Trash: Quarterly report", Expect{Dialog: Accept}, false, true},
+		{"automatic reply: OUTSIDE allowed only when the step says so", "Switch on your automatic reply from 2026-12-26? Everyone who mails you gets it, people OUTSIDE the company too.", Expect{Dialog: Accept, Unnamed: true, Outward: true}, true, false},
+		{"automatic reply, not marked outward", "Switch on your automatic reply? [smoke] people OUTSIDE the company too.", Expect{Dialog: Accept}, false, true},
 		{"allowed contact address", "Delete the contact [smoke] Contact r1 <contact-r1@example.invalid> from your address book?", Expect{Dialog: Accept, Allow: []string{"contact-r1@example.invalid"}}, true, false},
 	} {
-		acc, prob := Decide(c.msg, c.e, ppl, ppl.A)
+		p := ppl
+		p.Run = "r1"
+		acc, prob := Decide(c.msg, c.e, p, ppl.A)
 		if acc != c.accept || (prob != "") != c.problem {
 			t.Errorf("%s: accept %v, problem %q", c.name, acc, prob)
 		}
@@ -159,16 +167,22 @@ func fakeGateway(t *testing.T, users map[string]string) string {
 	// As the gateway's: asks first, and does nothing unless accepted.
 	mcp.AddTool(s, &mcp.Tool{Name: "logout_everywhere"}, func(ctx context.Context, req *mcp.CallToolRequest, _ none) (*mcp.CallToolResult, map[string]any, error) {
 		u := users[req.Extra.Header.Get("Authorization")]
-		res, err := req.Session.Elicit(ctx, &mcp.ElicitParams{Message: "Log " + u + " out EVERYWHERE now?", RequestedSchema: map[string]any{"type": "object", "properties": map[string]any{}}})
-		if err != nil {
-			return nil, nil, err
+		ctx = auth.WithRequest(ctx, req.Extra.TokenInfo)
+		res, ok, err := (&confirm.Asker{}).Ask(ctx, req, "Log "+u+" out EVERYWHERE now?", "logout")
+		if err != nil || res != nil {
+			return res, nil, err
 		}
-		if res.Action != "accept" {
+		if !ok {
 			return nil, nil, errors.New("the person declined: no one was logged out")
 		}
 		return nil, map[string]any{"done": "logged out"}, nil
 	})
-	srv := httptest.NewServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil))
+	verify := func(_ context.Context, tok string, _ *http.Request) (*mcpauth.TokenInfo, error) {
+		u := users["Bearer "+tok]
+		c := auth.Claims{Sub: u, Username: u}
+		return auth.TokenInfoNow(tok, c, c, time.Now().Add(time.Hour)), nil
+	}
+	srv := httptest.NewServer(mcpauth.RequireBearerToken(verify, nil)(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)))
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
@@ -181,7 +195,7 @@ func runFake(t *testing.T, users map[string]string) (*Runner, error) {
 		return Account{User: user, Login: &Login{Path: writeToken(t, 0o600, rt), TokenURL: u, ClientID: "cli", HTTP: http.DefaultClient}}
 	}
 	return Run(context.Background(), Config{URL: fakeGateway(t, users), Accounts: [2]Account{acct("smoke", "ra"), acct("smoke2", "rb")},
-		Shared: "team@co.example", AnswerAfter: time.Millisecond, Now: time.Now})
+		Shared: "team@co.example", AnswerAfter: confirm.MinAnswer + 100*time.Millisecond, Now: time.Now})
 }
 
 func TestRunGuard(t *testing.T) {

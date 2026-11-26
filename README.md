@@ -290,8 +290,11 @@ is needed.
     shared mailbox both accounts are in.
   - Anything to an outside address is checked (OUTSIDE, the recipients,
     From) and then declined. So is `logout_everywhere`.
-  - A question is accepted only if it names the run's own item, says nothing
-    goes OUTSIDE, and names no address other than the test accounts'.
+  - A question is accepted only if it names a `[smoke]` item or the run's
+    id, says nothing goes OUTSIDE, and names no address other than the test
+    accounts'. The one exception is switching on an automatic reply, which
+    always mentions OUTSIDE: it is set for a window a month ahead and
+    switched off again within the run.
 - **Before anything changes**, `whoami` must match the expected usernames,
   the two accounts must differ, and neither may be an admin.
 - **Clean-up:** everything it creates is named `[smoke] …`. A sweep removes
@@ -303,6 +306,11 @@ is needed.
   `cmd/sgnl-mcp-smoke/main.go`. Tokens come from two files (JSON with a
   refresh token, mode 600), which are rewritten when the token is refreshed.
   `-read-only` makes no changes; `-only tool,…` limits the run.
+- **Timing:** each run uses most of a person's burst of outward actions
+  (sending, inviting, sharing). Leave about 20 minutes between full runs;
+  otherwise steps show as `rate-limited` rather than failing silently.
+- **End check:** a final "nothing left" step fails if any `[smoke]` item
+  remains.
 
 ## Container
 
