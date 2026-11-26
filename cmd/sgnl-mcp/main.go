@@ -57,6 +57,8 @@
 //	SGNL_MCP_ADMIN_SPACES   set (1), with SGNL_MCP_OPENCLOUD_URL: files_spaces and the project
 //	                        space changes (create, members, quota) on the admin endpoint,
 //	                        as the admin (their own OpenCloud token; Admin role by group)
+//	SGNL_MCP_SELF_ACCOUNT   set (1), with the admin client(s): my_sessions and logout_everywhere
+//	                        for each person, only ever on their own account
 //	SGNL_MCP_ADMIN_GROUP_APPS   what the instance's own groups open, shown on group
 //	                        changes: group=text;group=text (SGNL's own groups are built in)
 //	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
@@ -228,6 +230,21 @@ func main() {
 	}
 	if u := os.Getenv("SGNL_MCP_OPENCLOUD_URL"); u != "" {
 		t.Files = opencloud.New(u)
+	}
+	// The person's own login account (my_sessions, logout_everywhere):
+	// the admin clients, only ever for the caller's own username.
+	if os.Getenv("SGNL_MCP_SELF_ACCOUNT") != "" {
+		id, wid := os.Getenv("SGNL_MCP_ADMIN_CLIENT_ID"), os.Getenv("SGNL_MCP_ADMIN_WRITE_CLIENT_ID")
+		if id == "" {
+			log.Fatal("sgnl-mcp: SGNL_MCP_SELF_ACCOUNT needs SGNL_MCP_ADMIN_CLIENT_ID (and _WRITE_ for logging out)")
+		}
+		t.Self = &admin.Self{Read: &admin.Client{Base: cfg.Issuer + "/api/admin", TokenURL: gw.TokenURL(), ID: id,
+			Secret: os.Getenv("SGNL_MCP_ADMIN_CLIENT_SECRET"), Scope: "authelia.admin.read", HTTP: &http.Client{Timeout: 20 * time.Second}, Now: time.Now}}
+		if wid != "" {
+			t.Self.Write = &admin.Client{Base: cfg.Issuer + "/api/admin", TokenURL: gw.TokenURL(), ID: wid,
+				Secret: os.Getenv("SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET"), Scope: "authelia.admin.read authelia.admin.write",
+				HTTP: &http.Client{Timeout: 20 * time.Second}, Now: time.Now}
+		}
 	}
 	t.Register(s)
 

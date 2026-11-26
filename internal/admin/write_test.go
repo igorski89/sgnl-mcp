@@ -85,6 +85,15 @@ func newFake(t *testing.T) (*fakeLogin, *Client, *Client) {
 			json.NewEncoder(w).Encode(u)
 		}
 	}))
+	mux.HandleFunc("GET /api/admin/events", auth(false, func(w http.ResponseWriter, r *http.Request) {
+		// Mixed on purpose: a filter the server ignored mustn't show others.
+		json.NewEncoder(w).Encode(map[string]any{"events": []any{
+			map[string]any{"time": "2026-11-26T09:00:00Z", "username": "hugo", "type": "1FA", "successful": true, "remote_ip": "10.0.0.1"},
+			map[string]any{"time": "2026-11-26T09:00:05Z", "username": "hugo", "type": "2FA", "successful": true, "remote_ip": "10.0.0.1"},
+			map[string]any{"time": "2026-11-26T08:00:00Z", "username": "hugo", "type": "1FA", "successful": false, "remote_ip": "203.0.113.9"},
+			map[string]any{"time": "2026-11-26T09:30:00Z", "username": "boss", "type": "1FA", "successful": true, "remote_ip": "10.9.9.9"},
+		}})
+	}))
 	mux.HandleFunc("GET /api/admin/groups", auth(false, func(w http.ResponseWriter, r *http.Request) {
 		var gs []map[string]string
 		for _, g := range f.groups {
