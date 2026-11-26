@@ -146,3 +146,42 @@ func TestUnshareAndVersionGuards(t *testing.T) {
 		t.Fatalf("extra requests: %v", got)
 	}
 }
+
+func TestCopyNeverOverwrites(t *testing.T) {
+	var got []string
+	exists := map[string]bool{davPrefix + "p/taken.md": true}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.URL.Path+" "+r.Header.Get("Overwrite")+" "+r.Header.Get("Destination"))
+		if r.Method == "PROPFIND" {
+			if !exists[r.URL.Path] {
+				w.WriteHeader(404)
+				return
+			}
+			w.WriteHeader(207)
+			fmt.Fprint(w, `<d:multistatus xmlns:d="DAV:"/>`)
+			return
+		}
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	ctx := context.Background()
+	if err := c.Copy(ctx, "t", davPrefix+"p/a.md", davPrefix+"p/taken.md"); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("copy over an existing name: %v", err)
+	}
+	if err := c.Copy(ctx, "t", davPrefix+"p/a.md", davPrefix+"q/a.md"); err != nil {
+		t.Fatal(err)
+	}
+	if last := got[len(got)-1]; last != "COPY "+davPrefix+"p/a.md F "+srv.URL+davPrefix+"q/a.md" {
+		t.Errorf("copy sent: %q", last)
+	}
+	for _, bad := range [][2]string{{trashPrefix + "p/x", davPrefix + "p/y"}, {davPrefix + "p/x", davPrefix + "p/../../y"}, {davPrefix + "p/x", "/elsewhere"}} {
+		if err := c.Copy(ctx, "t", bad[0], bad[1]); err == nil {
+			t.Errorf("copy %v allowed", bad)
+		}
+	}
+	// The general client still refuses COPY: only Copy sends it.
+	if _, err := c.do(ctx, "t", "COPY", davPrefix+"p/a.md", nil, nil); err == nil {
+		t.Error("COPY through do allowed")
+	}
+}

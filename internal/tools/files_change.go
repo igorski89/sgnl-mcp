@@ -128,6 +128,96 @@ func (t *Tools) fileMove(ctx context.Context, req *mcp.CallToolRequest, in FileM
 	return nil, FileChangeOut{dst, "Moved/renamed. It can be moved back the same way."}, nil
 }
 
+// ---- file_copy: a copy of a file or folder, into any folder the person
+// can add to; never over an existing name. Into a place others see, the
+// person is asked first (as file_save).
+
+type FileCopyIn struct {
+	Path     string `json:"path" jsonschema:"the file or folder to copy: a path from file_search or folder_list, or a short one like /notes.md"`
+	ToFolder string `json:"to_folder,omitempty" jsonschema:"copy into this folder (any space); default: the same folder"`
+	NewName  string `json:"new_name,omitempty" jsonschema:"the copy's name; default: the same name (needed when copying into the same folder)"`
+}
+
+func (t *Tools) fileCopy(ctx context.Context, req *mcp.CallToolRequest, in FileCopyIn) (*mcp.CallToolResult, FileChangeOut, error) {
+	tok, err := t.Auth.FilesToken(ctx)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	spaces, err := t.Files.Spaces(ctx, tok)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	src := personalPath(spaces, strings.TrimSpace(in.Path))
+	sp := spaceOf(spaces, src)
+	if sp == nil {
+		return nil, FileChangeOut{}, fmt.Errorf("path %q not recognised: use a path from file_search or folder_list", oneLine(src, 200))
+	}
+	isFolder := strings.HasSuffix(src, "/")
+	src = strings.TrimSuffix(src, "/")
+	if src+"/" == sp.Path || src == strings.TrimSuffix(sp.Path, "/") {
+		return nil, FileChangeOut{}, fmt.Errorf("a whole space can't be copied: copy a folder in it")
+	}
+	to := path.Dir(src) + "/"
+	dsp := sp
+	if f := strings.TrimSpace(in.ToFolder); f != "" {
+		to = personalPath(spaces, f)
+		if !strings.HasSuffix(to, "/") {
+			to += "/"
+		}
+		if dsp = spaceOf(spaces, to); dsp == nil {
+			return nil, FileChangeOut{}, fmt.Errorf("to_folder %q not recognised: use a folder from folder_list", oneLine(f, 200))
+		}
+		if strings.HasPrefix(to, src+"/") {
+			return nil, FileChangeOut{}, fmt.Errorf("a folder can't be copied into itself")
+		}
+	}
+	name := path.Base(src)
+	if in.NewName != "" {
+		if err := plainName(strings.TrimSpace(in.NewName)); err != nil {
+			return nil, FileChangeOut{}, err
+		}
+		name = url.PathEscape(strings.TrimSpace(in.NewName))
+	}
+	dst := to + name
+	if dst == src {
+		return nil, FileChangeOut{}, fmt.Errorf("a copy in the same folder needs a new_name")
+	}
+	if ex, err := t.Files.Exists(ctx, tok, src); err != nil {
+		return nil, FileChangeOut{}, err
+	} else if !ex {
+		return nil, FileChangeOut{}, fmt.Errorf("nothing at %q", shownPath(sp, src))
+	}
+	seen, err := t.othersSee(ctx, tok, dsp, to)
+	if err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	what := "file"
+	if isFolder {
+		what = "folder (with everything in it)"
+	}
+	if seen != "" {
+		q := fmt.Sprintf("Copy the %s %q to %s as %q? %s", what, shownPath(sp, src), shownPlace(dsp, to), oneLine(path.Base(dst), 80), seen)
+		res, ok, err := t.confirm(ctx, req, q, src+"|"+dst)
+		if err != nil || res != nil {
+			return res, FileChangeOut{}, err
+		}
+		if !ok {
+			return nil, FileChangeOut{}, fmt.Errorf("the person declined: nothing was copied")
+		}
+	}
+	if err := t.Files.Copy(ctx, tok, src, dst); err != nil {
+		return nil, FileChangeOut{}, err
+	}
+	if isFolder {
+		dst += "/"
+	}
+	note := "Copied; the original is unchanged."
+	if seen != "" {
+		note = "Copied with the person's confirmation; others with access see the copy. The original is unchanged."
+	}
+	return nil, FileChangeOut{dst, note}, nil
+}
+
 // ---- file_trash: into the space's trash bin, after the person confirms.
 
 type FileTrashIn struct {

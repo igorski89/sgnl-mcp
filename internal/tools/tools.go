@@ -163,6 +163,8 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "A file's earlier versions (when, size). The file app keeps one each time a file changes."}, t.fileVersions)
 		add(t, s, &mcp.Tool{Name: "file_trash_list", Annotations: ro,
 			Description: "What is in a space's trash bin (default: your personal space): name, where it was, when it was deleted. " + untrustedNames}, t.fileTrashList)
+		add(t, s, &mcp.Tool{Name: "file_copy", Annotations: wr,
+			Description: "Copy a file or folder (with all it holds) into any folder you can add to, also in another space; never over an existing name. Into a place others see, the person is asked first."}, t.fileCopy)
 		add(t, s, &mcp.Tool{Name: "file_move", Annotations: wr,
 			Description: "Rename and/or move a file or folder within its space (never over an existing name). In your own unshared folders it just happens; where others see either place, the person is asked first."}, t.fileMove)
 		add(t, s, &mcp.Tool{Name: "file_trash", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},

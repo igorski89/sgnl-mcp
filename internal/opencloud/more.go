@@ -250,6 +250,40 @@ func (c *Client) Move(ctx context.Context, token, src, dst string) error {
 	}
 }
 
+// Copy: src to dst (any space the person can write to), never over
+// something that exists (checked, and Overwrite: F); a folder with all
+// it holds.
+func (c *Client) Copy(ctx context.Context, token, src, dst string) error {
+	if !davItem(src) || !davItem(dst) {
+		return fmt.Errorf("paths must come from folder_list or file_search")
+	}
+	if ex, err := c.Exists(ctx, token, strings.TrimSuffix(dst, "/")); err != nil {
+		return err
+	} else if ex {
+		return fmt.Errorf("something with that name already exists there")
+	}
+	resp, err := c.send(ctx, token, "COPY", src, nil, map[string]string{"Destination": c.Base + dst, "Overwrite": "F", "Depth": "infinity"})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case 201:
+		return nil
+	case 412, 204:
+		return fmt.Errorf("something with that name already exists there")
+	case 403:
+		return fmt.Errorf("you can't add files there")
+	case 409:
+		return fmt.Errorf("the folder to copy it into doesn't exist")
+	case 507:
+		return fmt.Errorf("there isn't enough space there (the size limit is reached)")
+	default:
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("files: copy %d %.200s", resp.StatusCode, b)
+	}
+}
+
 // ToTrash: p into its space's trash bin (DELETE on a space path: OpenCloud
 // keeps it in the trash bin, restorable). Never the trash bin itself.
 func (c *Client) ToTrash(ctx context.Context, token, p string) error {
