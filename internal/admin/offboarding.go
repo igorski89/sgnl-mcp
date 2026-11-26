@@ -58,9 +58,15 @@ func (c *Check) finish() {
 	switch {
 	case c.State == stNot:
 		c.Line = stNot + " (" + c.Reason + "), " + c.How
+		if len(c.Info) > 0 {
+			c.Line += " [" + strings.Join(c.Info, "; ") + "]"
+		}
 	case len(c.Found) > 0:
 		c.State = stFound
 		c.Line = stFound + ": " + strings.Join(c.Found, "; ")
+		if len(c.Info) > 0 {
+			c.Line += " (" + strings.Join(c.Info, "; ") + ")"
+		}
 	default:
 		c.State = stNothing
 		c.Line = stNothing
@@ -92,7 +98,7 @@ func (t *Tools) offboarding(ctx context.Context, _ *mcp.CallToolRequest, in Offb
 	// The login server first: its groups are needed for space access
 	// through groups.
 	lctx, cancel := context.WithTimeout(ctx, sectionTimeout)
-	login, groups, noSuch := t.offLogin(lctx, user, hint)
+	login, groups, groupsKnown, noSuch := t.offLogin(lctx, user, hint)
 	cancel()
 
 	var mu sync.Mutex
@@ -111,7 +117,7 @@ func (t *Tools) offboarding(ctx context.Context, _ *mcp.CallToolRequest, in Offb
 		}()
 	}
 	run("mail", func(c context.Context) []Check { return t.offMail(c, user, hint) })
-	run("files", func(c context.Context) []Check { return t.offFiles(c, user, groups, hint) })
+	run("files", func(c context.Context) []Check { return t.offFiles(c, user, groups, groupsKnown, hint) })
 	run("ai", func(c context.Context) []Check { return []Check{t.offAI(c, user)} })
 	wg.Wait()
 
@@ -149,14 +155,16 @@ func (t *Tools) offboarding(ctx context.Context, _ *mcp.CallToolRequest, in Offb
 
 var credNames = map[string]string{"password": "password", "webauthn": "passkey", "totp": "one-time codes"}
 
-func (t *Tools) offLogin(ctx context.Context, user, hint string) (Check, []string, bool) {
+// offLogin: the section, the person's groups, whether they're known (the
+// login server answered), and whether there's no such person.
+func (t *Tools) offLogin(ctx context.Context, user, hint string) (Check, []string, bool, bool) {
 	const sec = "Login server"
 	var u apiUser
 	if err := t.API.get(ctx, "/users/"+url.PathEscape(user), nil, &u); err != nil {
 		if errors.Is(err, errNotFound) {
-			return Check{Section: sec, Info: []string{"no such person in the login server"}}, nil, true
+			return Check{Section: sec, Info: []string{"no such person in the login server"}}, []string{}, true, true
 		}
-		return notChecked(sec, "the login server didn't answer: "+short(err.Error()), hint), nil, false
+		return notChecked(sec, "the login server didn't answer: "+short(err.Error()), hint), nil, false, false
 	}
 	c := Check{Section: sec}
 	if u.Disabled {
@@ -185,7 +193,7 @@ func (t *Tools) offLogin(ctx context.Context, user, hint string) (Check, []strin
 	if len(creds) > 0 {
 		c.Found = append(c.Found, "credentials set: "+strings.Join(creds, ", "))
 	}
-	return c, groups, false
+	return c, groups, true, false
 }
 
 // ---- 2. mail
@@ -237,10 +245,17 @@ func (t *Tools) offMail(ctx context.Context, user, hint string) []Check {
 	var raw map[string]any
 	var me *MailAccount
 	all := accountsFrom(accts, domains)
+	// As bin/sgnl-user-suspend: the account at <username>@<company domain>.
+	n := 0
 	for i, m := range all {
-		if m.Kind == "person" && (strings.EqualFold(m.Address, addr) || strings.EqualFold(m.Name, addr) || strings.EqualFold(m.Name, user)) {
+		if m.Kind == "person" && (strings.EqualFold(m.Address, addr) || strings.EqualFold(m.Name, addr)) {
 			me = &all[i]
+			n++
 		}
+	}
+	if n > 1 {
+		why := fmt.Sprintf("%d mail accounts match %s", n, addr)
+		return []Check{notChecked(secBox, why, hint), notChecked(secShared, why, "use mail_mailbox with their address"), app, sieve}
 	}
 	if me != nil {
 		for _, a := range accts {
@@ -284,11 +299,12 @@ type fileUserFull struct {
 	Enabled  *bool  `json:"accountEnabled"`
 }
 
-func (t *Tools) offFiles(ctx context.Context, user string, loginGroups []string, hint string) []Check {
+func (t *Tools) offFiles(ctx context.Context, user string, loginGroups []string, groupsKnown bool, hint string) []Check {
 	const (
 		secAcct   = "Files: account"
 		secSpaces = "Files: project spaces (only spaces you can see)"
 		secHidden = "Files: project spaces you aren't a member of"
+		secGroups = "Files: project spaces through groups"
 		secTokens = "Files: app tokens and personal shares"
 	)
 	tokens := notChecked(secTokens, "the file app shows app tokens and shares only to their owner", "disable the file account ("+hint+" shows its state) to refuse its app tokens")
@@ -316,7 +332,14 @@ func (t *Tools) offFiles(ctx context.Context, user string, loginGroups []string,
 				given++
 			}
 		}
-		acct.Info = append(acct.Info, fmt.Sprintf("the file app listed all %d accounts to you (enabled state given for %d)", len(r.Value), given))
+		mine := "not listed"
+		if me != nil {
+			mine = "given: false"
+			if me.Enabled != nil {
+				mine = "given: " + strconv.FormatBool(*me.Enabled)
+			}
+		}
+		acct.Info = append(acct.Info, fmt.Sprintf("the file app listed all %d accounts to you; enabled state given for %d; for %s %s", len(r.Value), given, user, mine))
 		switch {
 		case me == nil:
 			acct.Info = append(acct.Info, "no file-app account (never logged in there)")
@@ -331,6 +354,7 @@ func (t *Tools) offFiles(ctx context.Context, user string, loginGroups []string,
 		return []Check{acct, notChecked(secSpaces, "the file app didn't list its spaces: "+short(err.Error()), "see files_spaces"), tokens}
 	}
 	spaces := Check{Section: secSpaces}
+	groups := Check{Section: secGroups}
 	hidden := 0
 	for _, s := range all {
 		if s.Note != "" && len(s.Members) == 0 {
@@ -350,19 +374,23 @@ func (t *Tools) offFiles(ctx context.Context, user string, loginGroups []string,
 				}
 				spaces.Found = append(spaces.Found, line)
 			case m.Kind == "group" && slices.ContainsFunc(loginGroups, func(g string) bool { return strings.EqualFold(g, m.Name) }):
-				spaces.Found = append(spaces.Found, fmt.Sprintf("%s (%s through group %s%s)", s.Name, m.Role, m.Name, dis))
+				groups.Found = append(groups.Found, fmt.Sprintf("%s (%s through group %s%s)", s.Name, m.Role, m.Name, dis))
 			}
 		}
 	}
-	if me == nil && acct.State != stNot {
+	seen := fmt.Sprintf("%d space(s) listed, members hidden in %d", len(all), hidden)
+	spaces.Info = append(spaces.Info, seen)
+	switch {
+	case me == nil && acct.State == stNot:
+		spaces = notChecked(secSpaces, "the person's file-app account couldn't be looked up", "see files_spaces")
+		spaces.Info = []string{seen}
+	case me == nil:
 		spaces.Info = append(spaces.Info, "no file-app account: only access through groups applies")
 	}
-	if me == nil && acct.State == stNot {
-		spaces = notChecked(secSpaces, "the person's file-app account couldn't be looked up", "see files_spaces")
-	} else if loginGroups == nil {
-		spaces.Info = append(spaces.Info, "access through groups not checked: the login server's groups are unknown")
+	if !groupsKnown {
+		groups = notChecked(secGroups, "the person's login groups are unknown: the login server didn't answer", "see files_spaces")
 	}
-	out := []Check{acct, spaces}
+	out := []Check{acct, spaces, groups}
 	if hidden > 0 {
 		out = append(out, notChecked(secHidden, fmt.Sprintf("%d space(s): the file app hides their members from admins who aren't in them", hidden),
 			"ask each space's managers, or check as a member"))
@@ -398,7 +426,8 @@ func (t *Tools) offAI(ctx context.Context, user string) Check {
 		last += " (" + short(a.LastTool) + ")"
 	}
 	if a.Since > 0 {
-		c.Found = append(c.Found, strconv.Itoa(a.Since)+" call(s) in the last 30 days", last)
+		c.Found = append(c.Found, strconv.Itoa(a.Since)+" call(s) in the last 30 days")
+		c.Info = append(c.Info, last)
 	} else {
 		c.Info = append(c.Info, "no calls in the last 30 days", last)
 	}

@@ -95,7 +95,7 @@ func TestMailAdminReads(t *testing.T) {
 		t.Errorf("a blobId got through: %q", txt)
 	}
 	for _, s := range *seen {
-		if strings.Contains(s, "blobId") || strings.Contains(s, "credentials") || strings.Contains(s, "download") || strings.Contains(s, "/set") {
+		if strings.Contains(s, "blobId") || strings.Contains(s, "credentials") || strings.Contains(s, "permissions") || strings.Contains(s, "download") || strings.Contains(s, "/set") {
 			t.Errorf("asked for: %s", s)
 		}
 		if strings.HasSuffix(s, "/get null") {

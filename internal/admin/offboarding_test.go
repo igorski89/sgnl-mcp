@@ -37,11 +37,16 @@ func section(t *testing.T, out OffboardingOut, name string) Check {
 }
 
 func offTools(t *testing.T) (*Tools, *audit.Store) {
-	_, read, _ := newFake(t)
+	at, st, _, _ := offToolsWith(t)
+	return at, st
+}
+
+func offToolsWith(t *testing.T) (*Tools, *audit.Store, *fakeLogin, *fakeDrive) {
+	fl, read, _ := newFake(t)
 	m, _ := fakeStalwart(t)
-	_, files := newFakeDrive(t)
+	fd, files := newFakeDrive(t)
 	st := auditStore(t)
-	return &Tools{API: read, Mail: m, Files: files, Audit: st, UserDomain: "co.example"}, st
+	return &Tools{API: read, Mail: m, Files: files, Audit: st, UserDomain: "co.example"}, st, fl, fd
 }
 
 func TestOffboardingFound(t *testing.T) {
@@ -87,11 +92,17 @@ func TestOffboardingFound(t *testing.T) {
 	if c := section(t, out, "Files: project spaces you"); c.State != stNot || !strings.Contains(c.Reason, "1 space(s)") {
 		t.Errorf("hidden spaces: %+v", c)
 	}
-	if c := section(t, out, "AI gateway"); c.State != stFound || !strings.Contains(c.Line, "1 call(s) in the last 30 days") || !strings.Contains(c.Line, "from claude-code (mail_send)") {
+	if c := section(t, out, "AI gateway"); c.State != stFound || c.Found[0] != "1 call(s) in the last 30 days" || !strings.Contains(c.Line, "from claude-code (mail_send)") {
 		t.Errorf("ai: %+v", c)
 	}
-	// login 3 + mail 1 + shared 1 + ai 2 = 7 open; 7 sections not checked.
-	if out.Open != 7 || out.NotChecked != 7 || !strings.HasPrefix(out.Summary, "7 open item(s) in 4 section(s); 7 section(s) NOT CHECKED") {
+	if c := section(t, out, "Files: project spaces through"); c.State != stNothing {
+		t.Errorf("groups: %+v", c)
+	}
+	if c := section(t, out, "Files: project spaces (only"); !strings.Contains(c.Line, "3 space(s) listed, members hidden in 1") {
+		t.Errorf("spaces diagnostics: %s", c.Line)
+	}
+	// login 3 + mail 1 + shared 1 + ai 1 = 6 open; 7 sections not checked.
+	if out.Open != 6 || out.NotChecked != 7 || !strings.HasPrefix(out.Summary, "6 open item(s) in 4 section(s); 7 section(s) NOT CHECKED") {
 		t.Errorf("summary: %s (%d/%d)", out.Summary, out.Open, out.NotChecked)
 	}
 	if strings.Contains(txt, "No such person") {
@@ -100,8 +111,16 @@ func TestOffboardingFound(t *testing.T) {
 }
 
 func TestOffboardingSpacesAndMissingMailState(t *testing.T) {
-	at, _ := offTools(t)
+	at, _, _, fd := offToolsWith(t)
+	root := fd.drives[2]["root"].(map[string]any)
+	root["permissions"] = append(root["permissions"].([]any), perm("", "group", "gs", "sgnl_users", "viewer"))
 	out, _ := offboard(t, at, "boss")
+	if c := section(t, out, "Files: project spaces through"); c.State != stFound || c.Found[0] != "Solo (viewer through group sgnl_users)" {
+		t.Errorf("groups: %+v", c)
+	}
+	if c := section(t, out, "Files: account"); !strings.Contains(c.Line, "for boss given: false") {
+		t.Errorf("files diagnostics: %s", c.Line)
+	}
 	sp := section(t, out, "Files: project spaces (only")
 	j := strings.Join(sp.Found, " | ")
 	if sp.State != stFound || !strings.Contains(j, "Marketing (manager): ONLY MANAGER") || !strings.Contains(j, "Solo (manager): ONLY MANAGER") {
@@ -126,6 +145,16 @@ func TestOffboardingSpacesAndMissingMailState(t *testing.T) {
 	}
 	if c := section(t, out, "AI gateway"); c.State != stNothing || !strings.Contains(c.Line, "no calls recorded") {
 		t.Errorf("ai: %+v", c)
+	}
+}
+
+func TestOffboardingDisabledLogin(t *testing.T) {
+	at, _, fl, _ := offToolsWith(t)
+	fl.users["anna"].Disabled = true
+	out, _ := offboard(t, at, "anna")
+	c := section(t, out, "Login server")
+	if strings.Contains(strings.Join(c.Found, " "), "enabled") || !strings.Contains(c.Line, "account disabled (no login)") {
+		t.Errorf("disabled: %+v", c)
 	}
 }
 
