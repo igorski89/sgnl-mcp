@@ -25,9 +25,9 @@ Keep it separate from your everyday connection, and connect it only when you nee
 | List people, groups, recent logins and recent account changes | No |
 | See firing alerts, the server's disk/memory/CPU, the apps, backups, certificates | No |
 | See the mailboxes: shared ones and their members, people's addresses and aliases, space used; the outgoing mail queue | No (never any mail content) |
-| **Add someone to a shared mailbox / remove them** | **Yes**: you see the mailbox, who's in it and what they gain or lose |
-| **Give someone an extra address (alias) / remove one** | **Yes**: you see the address and whose mailbox it reaches |
-| **Set a mailbox's size limit** | **Yes**: you see the limit now, the new one and what it uses |
+| **Add someone to a shared mailbox / remove them** (if switched on) | **Yes**: you see the mailbox, who's in it and what they gain or lose |
+| **Give someone an extra address (alias) / remove one** (if switched on) | **Yes**: you see the address and whose mailbox it reaches |
+| **Set a mailbox's size limit** (if switched on) | **Yes**: you see the limit now, the new one and what it uses |
 | **Invite a new person** | **Yes**: you see the name, their future address and where the set-up link goes |
 | **Finish an invitation** | **Yes**: you see the address and the groups, with what each opens |
 | **Add someone to groups / remove them** | **Yes**: you see what each group opens or what they lose |
@@ -115,6 +115,8 @@ You can't log out or disable yourself here.
 - **"Was it delivered?":** only mail still waiting in the queue shows up, e.g. a server that keeps refusing it and the reason. An empty answer means it was handed on: there's no delivery history. Outgoing mail goes through a relay service, so a bounce comes back later as a mail to the sender.
 
 ### Changing mailboxes
+
+*Only if your instance has mailbox changes switched on (they need a change to the mail server first). Otherwise ask whoever runs the instance.*
 
 > "Add Hugo to contact@."
 >

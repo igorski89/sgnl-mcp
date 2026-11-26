@@ -123,7 +123,7 @@ delivered?"). The gateway asks only for listed properties, never a queued
 message's `blobId` (with which its content could be downloaded) or
 credentials, strips `blobId` from any answer, and has no download code.
 
-Mail admin changes, with a second key `SGNL_MCP_STALWART_WRITE_API_KEY`
+Mail admin changes (needs a patched mail server: see below), with a second key `SGNL_MCP_STALWART_WRITE_API_KEY`
 (the same account's permissions plus `sysAccountUpdate`; leave it unset
 to switch changes off alone): `mail_group_member_add` / `_remove` (a
 person in or out of a shared mailbox), `mail_alias_add` / `_remove` (a
@@ -138,6 +138,16 @@ with the one change, so disabled aliases and other quota keys survive.
 Never: creating or deleting accounts, groups or mail; the last member of a
 shared mailbox; machine accounts (`SGNL_MCP_MAIL_PROTECTED`, default
 `mcp-gateway,ses-relay`, and any account without a login of the same name).
+
+**Stalwart 1.1.1 refuses these changes as shipped:** before any account
+update it requires the caller to hold every permission of the target
+account (`validate_account_access`), i.e. the user role's mail
+permissions. Giving the gateway's account those would let a leaked write
+key add itself to shared mailboxes and read them, so don't. The changes
+need a server patch that skips that check only when an update touches
+nothing but `memberGroupIds`, `aliases` or `quotas` (credentials, roles
+and permissions keep the full check). Without it, leave the write key
+unset.
 
 ## How it works
 
