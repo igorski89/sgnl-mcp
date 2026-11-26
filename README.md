@@ -152,7 +152,8 @@ permissions. Giving the gateway's account those would let a leaked write
 key add itself to shared mailboxes and read them, so don't. The changes
 need a server patch that skips that check only when an update touches
 nothing but `memberGroupIds` or `quotas` (credentials, roles, permissions
-and aliases keep the full check). Without it, leave the write key unset.
+and aliases keep the full check). SGNL runs a Stalwart build with exactly that patch; on stock Stalwart,
+leave the write key unset.
 
 ## How it works
 
