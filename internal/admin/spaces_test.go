@@ -68,6 +68,18 @@ func newFakeDrive(t *testing.T) (*fakeDrive, *Files) {
 		switch {
 		case r.Method == "GET" && p == "/graph/v1.0/drives":
 			json.NewEncoder(w).Encode(map[string]any{"value": f.drives})
+		case r.Method == "GET" && strings.HasSuffix(p, "/root/permissions"):
+			// v1beta1: the members as shares on the space root, with their
+			// share ids (a made-up "u:<id>" is refused, as live).
+			d := drive(strings.Split(p, "/")[4])
+			var out []any
+			ps, _ := d["root"].(map[string]any)["permissions"].([]any)
+			for _, x := range ps {
+				pm := x.(map[string]any)
+				out = append(out, map[string]any{"id": shareID(pm), "roles": []any{spaceRoles[pm["roles"].([]any)[0].(string)]}, "grantedToV2": pm["grantedToV2"]})
+			}
+			out = append(out, map[string]any{"id": "link1", "roles": []any{}, "link": map[string]any{"type": "view"}}) // a public link: no grantee
+			json.NewEncoder(w).Encode(map[string]any{"value": out})
 		case r.Method == "GET" && p == "/graph/v1.0/users":
 			q := strings.Trim(r.URL.Query().Get("$search"), `"`)
 			var out []any
@@ -105,14 +117,7 @@ func newFakeDrive(t *testing.T) (*fakeDrive, *Files) {
 			found := false
 			for i, x := range ps {
 				pm := x.(map[string]any)
-				g := pm["grantedToV2"].(map[string]any)
-				id := ""
-				if u, ok := g["user"].(map[string]any); ok {
-					id = "u:" + u["id"].(string)
-				} else if gr, ok := g["group"].(map[string]any); ok {
-					id = "g:" + gr["id"].(string)
-				}
-				if id != parts[7] {
+				if shareID(pm) != parts[7] {
 					continue
 				}
 				found = true
@@ -134,6 +139,18 @@ func newFakeDrive(t *testing.T) (*fakeDrive, *Files) {
 	}))
 	t.Cleanup(srv.Close)
 	return f, &Files{Base: srv.URL, Token: func(context.Context) (string, error) { return "admintok", nil }, HTTP: srv.Client()}
+}
+
+// shareID: the id OpenCloud gives a space member's share (storage, space
+// and a share uuid; here derived from the grantee).
+func shareID(pm map[string]any) string {
+	g := pm["grantedToV2"].(map[string]any)
+	for _, k := range []string{"user", "group"} {
+		if x, ok := g[k].(map[string]any); ok {
+			return "st$sp!share-" + x["id"].(string)
+		}
+	}
+	return ""
 }
 
 func (f *fakeDrive) writes() []string {
@@ -240,8 +257,8 @@ func TestFilesSpaceChanges(t *testing.T) {
 	if txt, isErr := call("files_space_member_remove", map[string]any{"space": "Marketing", "member": "anna@co.example"}); isErr {
 		t.Fatalf("remove: %s", txt)
 	}
-	// Changes go to the member's v1beta1 permission id (u:/g: and the id).
-	if w := f.writes(); !slices.Contains(w, "PATCH /graph/v1beta1/drives/d1/root/permissions/u:ua") || !slices.Contains(w, "DELETE /graph/v1beta1/drives/d1/root/permissions/u:ua") {
+	// Changes go to the member's real permission id, from v1beta1 …/root/permissions.
+	if w := f.writes(); !slices.Contains(w, "PATCH /graph/v1beta1/drives/d1/root/permissions/st$sp!share-ua") || !slices.Contains(w, "DELETE /graph/v1beta1/drives/d1/root/permissions/st$sp!share-ua") {
 		t.Errorf("writes: %v", w)
 	}
 	// The space made here: the admin manages it, so members can be added.

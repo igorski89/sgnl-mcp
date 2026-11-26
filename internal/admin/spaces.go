@@ -54,15 +54,6 @@ func roleName(r string) string {
 	return "other"
 }
 
-// permID: a space member's permission id as v1beta1 names it ("u:" or
-// "g:" and the user's or group's id; the v1.0 list leaves it out).
-func permID(kind, id string) string {
-	if kind == "group" {
-		return "g:" + id
-	}
-	return "u:" + id
-}
-
 var (
 	reDrives = regexp.MustCompile(`^/graph/v1\.0/drives$`)
 	reDrive  = regexp.MustCompile(`^/graph/v1\.0/drives/[^/?#]+$`)
@@ -293,9 +284,6 @@ func (t *Tools) spaces(ctx context.Context) ([]Space, error) {
 				m.Kind, m.Name, m.id = "group", oneLine(p.GrantedTo.Group.DisplayName), p.GrantedTo.Group.ID
 			default:
 				continue
-			}
-			if m.perm == "" {
-				m.perm = permID(m.Kind, m.id)
 			}
 			s.Members = append(s.Members, m)
 		}
@@ -630,6 +618,30 @@ func (t *Tools) spaceMemberAdd(ctx context.Context, req *mcp.CallToolRequest, in
 		Note: "Done with the admin's confirmation; the file app notifies them."}, nil
 }
 
+// realPermID: a member's permission id as OpenCloud keeps it: space
+// members are shares on the space root, listed with their ids at
+// v1beta1 …/root/permissions (the v1.0 drive list has none, and a made-up
+// one isn't accepted).
+func (t *Tools) realPermID(ctx context.Context, driveID string, m *SpaceMember) (string, error) {
+	var r struct {
+		Value []gPerm `json:"value"`
+	}
+	if err := t.Files.call(ctx, "GET", "/graph/v1beta1/drives/"+url.PathEscape(driveID)+"/root/permissions", nil, nil, &r); err != nil {
+		return "", err
+	}
+	for _, p := range r.Value {
+		switch {
+		case m.Kind == "user" && p.GrantedTo.User != nil && p.GrantedTo.User.ID == m.id,
+			m.Kind == "group" && p.GrantedTo.Group != nil && p.GrantedTo.Group.ID == m.id:
+			if p.ID == "" {
+				break
+			}
+			return p.ID, nil
+		}
+	}
+	return "", fmt.Errorf("the file app doesn't list %s's access to this space any more: check with files_spaces", m.Name)
+}
+
 func (t *Tools) spaceMemberRemove(ctx context.Context, req *mcp.CallToolRequest, in SpaceMemberIn) (*mcp.CallToolResult, SpaceChangeOut, error) {
 	s, err := t.managed(ctx, in.Space)
 	if err != nil {
@@ -657,7 +669,11 @@ func (t *Tools) spaceMemberRemove(ctx context.Context, req *mcp.CallToolRequest,
 	if !ok {
 		return nil, SpaceChangeOut{}, errDecl
 	}
-	if err := t.Files.call(ctx, "DELETE", "/graph/v1beta1/drives/"+url.PathEscape(s.ID)+"/root/permissions/"+url.PathEscape(m.perm), nil, nil, nil); err != nil {
+	pid, err := t.realPermID(ctx, s.ID, m)
+	if err != nil {
+		return nil, SpaceChangeOut{}, err
+	}
+	if err := t.Files.call(ctx, "DELETE", "/graph/v1beta1/drives/"+url.PathEscape(s.ID)+"/root/permissions/"+url.PathEscape(pid), nil, nil, nil); err != nil {
 		return nil, SpaceChangeOut{}, err
 	}
 	return nil, SpaceChangeOut{Done: "removed " + who.Name, Space: t.spaceAfter(ctx, s.ID), Note: "Done with the admin's confirmation."}, nil
@@ -697,7 +713,11 @@ func (t *Tools) spaceMemberRole(ctx context.Context, req *mcp.CallToolRequest, i
 	if !ok {
 		return nil, SpaceChangeOut{}, errDecl
 	}
-	if err := t.Files.call(ctx, "PATCH", "/graph/v1beta1/drives/"+url.PathEscape(s.ID)+"/root/permissions/"+url.PathEscape(m.perm), nil,
+	pid, err := t.realPermID(ctx, s.ID, m)
+	if err != nil {
+		return nil, SpaceChangeOut{}, err
+	}
+	if err := t.Files.call(ctx, "PATCH", "/graph/v1beta1/drives/"+url.PathEscape(s.ID)+"/root/permissions/"+url.PathEscape(pid), nil,
 		map[string]any{"roles": []any{spaceRoles[role]}}, nil); err != nil {
 		return nil, SpaceChangeOut{}, err
 	}
