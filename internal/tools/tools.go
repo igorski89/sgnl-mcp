@@ -112,11 +112,11 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "event_import", Annotations: wr,
 		Description: "Add an invitation received by mail (its calendar part) to your calendar, e.g. from someone outside the company. The person is asked first, with the organizer shown; nothing is sent. Answer it afterwards with event_respond."}, t.eventImport)
 	add(t, s, &mcp.Tool{Name: "event_respond", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
-		Description: "Answer an invitation: accept, decline or maybe. The person is asked in their app first; the organizer then gets the answer by email. Not for repeating events yet."}, t.eventRespond)
+		Description: "Answer an invitation: accept, decline or maybe. The person is asked in their app first; the organizer then gets the answer by email. A repeating series is answered as a whole (single meetings of it: in the calendar app)."}, t.eventRespond)
 	add(t, s, &mcp.Tool{Name: "event_update", Annotations: &mcp.ToolAnnotations{OpenWorldHint: ptr(true)},
-		Description: "Change an event you own: title, time, length, place, description (never who is invited). A private event changes right away; for a meeting you organize the person is asked first and the attendees get the update by email. Not for repeating events yet."}, t.eventUpdate)
+		Description: "Change an event you own: title, time, length, place, description (never who is invited). A private event changes right away; for a meeting you organize the person is asked first and the attendees get the update by email. For a repeating series: with occurrence (from event_list) only that meeting; without it title, place and description of all meetings (moving all of them: in the calendar app)."}, t.eventUpdate)
 	add(t, s, &mcp.Tool{Name: "event_cancel", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(true)},
-		Description: "Cancel a meeting you organize (attendees get a cancellation by email) or delete a private event. The person is always asked first. To decline someone else's meeting use event_respond. Not for repeating events yet."}, t.eventCancel)
+		Description: "Cancel a meeting you organize (attendees get a cancellation by email) or delete a private event. The person is always asked first. To decline someone else's meeting use event_respond. For a repeating series: with occurrence (from event_list) only that meeting, without it the whole series."}, t.eventCancel)
 	add(t, s, &mcp.Tool{Name: "availability_get", Annotations: ro,
 		Description: "When colleagues are busy (free/busy only, never what their events are), e.g. to find a common free slot. Times in UTC."}, t.availabilityGet)
 

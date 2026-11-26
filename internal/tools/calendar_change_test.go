@@ -46,10 +46,15 @@ func TestRespondOnlyAsAttendeeWithYes(t *testing.T) {
 		asked = r.Params.Message
 		return &mcp.ElicitResult{Action: "accept"}, nil
 	})
-	for id, why := range map[string]string{"r1": "repeating", "p1": "not invited", "old": "over"} {
+	for id, why := range map[string]string{"p1": "not invited", "old": "over"} {
 		if r := calCall(t, cs, "event_respond", map[string]any{"id": id, "answer": "decline"}); !r.IsError {
 			t.Errorf("%s (%s): not refused", id, why)
 		}
+	}
+	// One meeting of a series: the mail server doesn't allow it.
+	if r := calCall(t, cs, "event_respond", map[string]any{"id": "r1", "answer": "decline", "occurrence": "2026-12-10T10:00:00"}); !r.IsError ||
+		!strings.Contains(resultText(r), "single meetings of a series") {
+		t.Errorf("occurrence answer: %q", resultText(r))
 	}
 	if r := calCall(t, cs, "event_respond", map[string]any{"id": "e1", "answer": "fine"}); !r.IsError {
 		t.Error("bad answer not refused")

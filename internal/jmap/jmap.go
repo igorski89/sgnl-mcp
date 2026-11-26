@@ -297,8 +297,39 @@ type Call struct {
 	Vacation bool
 }
 
+// overrideFields: what an override of one meeting of a series may carry.
+var overrideFields = []string{"start", "duration", "title", "locations", "description", "showWithoutTime", "excluded"}
+
+// checkOverrides: recurrenceOverrides only as the whole object; each key a
+// local date-time (the meeting's original start), each override only
+// overrideFields, excluded only true. Never participants or the rule.
+func checkOverrides(v any) error {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("jmap: recurrenceOverrides: an object")
+	}
+	for k, o := range m {
+		if _, err := time.Parse("2006-01-02T15:04:05", k); err != nil {
+			return fmt.Errorf("jmap: recurrenceOverrides: %q isn't a date-time", k)
+		}
+		f, ok := o.(map[string]any)
+		if !ok || len(f) == 0 {
+			return fmt.Errorf("jmap: recurrenceOverrides: %s: an object", k)
+		}
+		for fk, fv := range f {
+			if !slices.Contains(overrideFields, fk) {
+				return fmt.Errorf("jmap: recurrenceOverrides: %s can't be changed", fk)
+			}
+			if fk == "excluded" && fv != true {
+				return fmt.Errorf("jmap: recurrenceOverrides: excluded only true")
+			}
+		}
+	}
+	return nil
+}
+
 // rescheduleFields: what Reschedule may change.
-var rescheduleFields = []string{"title", "start", "duration", "timeZone", "showWithoutTime", "locations", "description"}
+var rescheduleFields = []string{"title", "start", "duration", "timeZone", "showWithoutTime", "locations", "description", "recurrenceOverrides"}
 
 var answers = []string{"accepted", "declined", "tentative"}
 
@@ -400,6 +431,11 @@ func checkCalendarChange(call Call) error {
 			if !slices.Contains(rescheduleFields, k) {
 				return fmt.Errorf("jmap: reschedule: %s can't be changed", k)
 			}
+			if k == "recurrenceOverrides" {
+				if err := checkOverrides(v); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -459,9 +495,17 @@ func check(call Call) error {
 			m, _ := call.Args[k].(map[string]any)
 			for _, ev := range m {
 				e, _ := ev.(map[string]any)
-				for f := range e {
+				for f, v := range e {
 					if f == "participants" || strings.HasPrefix(f, "participants/") || f == "replyTo" {
 						return fmt.Errorf("jmap: events with participants are not allowed (they send invitations)")
+					}
+					if strings.HasPrefix(f, "recurrenceOverrides/") {
+						return fmt.Errorf("jmap: recurrenceOverrides only as a whole")
+					}
+					if f == "recurrenceOverrides" {
+						if err := checkOverrides(v); err != nil {
+							return err
+						}
 					}
 				}
 			}

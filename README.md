@@ -203,8 +203,12 @@ only on loopback.
   changes to their own meetings (`event_update`: time, title, place, text,
   never who is invited) and cancellations (`event_cancel`: one event) each
   have their own narrow path in the JMAP client and need the person's yes;
-  nothing is mailed about an event that is over, and repeating events
-  aren't changed yet. Invitations from outside aren't added by the mail
+  nothing is mailed about an event that is over. Repeating series: an
+  attendee answers the whole series (the mail server refuses answers to
+  single meetings); the organizer changes or cancels one meeting
+  (`occurrence`, sent as the whole `recurrenceOverrides` object, existing
+  overrides kept) or the title, place and text of all; the rule itself and
+  the attendees are never changed. Invitations from outside aren't added by the mail
   server itself; `event_import` adds one from the received mail after the
   person confirms (organizer shown, OUTSIDE marked), only if they are an
   attendee, without alerts or links, and without mailing anyone.

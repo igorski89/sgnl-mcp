@@ -260,3 +260,33 @@ func TestContactCardGuard(t *testing.T) {
 	refused(t, Call{Method: "Email/set", DeleteContact: true, Args: map[string]any{"destroy": []string{"x"}}}, "contact delete")
 	refused(t, Call{Method: "AddressBook/set"}, "not allowed")
 }
+
+// One meeting of a series: overrides only whole, only time/title/place/text
+// or excluded; never participants, on both the confirmed and private paths.
+func TestOverridesGuard(t *testing.T) {
+	ov := func(o map[string]any) map[string]any {
+		return map[string]any{"accountId": "A", "sendSchedulingMessages": true, "update": map[string]any{"w": map[string]any{"recurrenceOverrides": o}}}
+	}
+	priv := func(p map[string]any) map[string]any {
+		return map[string]any{"accountId": "A", "update": map[string]any{"w": p}}
+	}
+	if err := check(Call{Method: "CalendarEvent/set", Reschedule: true, Args: ov(map[string]any{"2099-01-20T10:00:00": map[string]any{"start": "2099-01-20T14:00:00"},
+		"2099-01-27T10:00:00": map[string]any{"excluded": true}})}); err != nil {
+		t.Errorf("move+cancel: %v", err)
+	}
+	if err := check(Call{Method: "CalendarEvent/set", Args: priv(map[string]any{"recurrenceOverrides": map[string]any{"2099-01-27T10:00:00": map[string]any{"excluded": true}}})}); err != nil {
+		t.Errorf("private: %v", err)
+	}
+	for name, c := range map[string]Call{
+		"participants in override": {Method: "CalendarEvent/set", Reschedule: true, Args: ov(map[string]any{"2099-01-20T10:00:00": map[string]any{"participants/x": map[string]any{}}})},
+		"excluded false":           {Method: "CalendarEvent/set", Reschedule: true, Args: ov(map[string]any{"2099-01-20T10:00:00": map[string]any{"excluded": false}})},
+		"bad key":                  {Method: "CalendarEvent/set", Reschedule: true, Args: ov(map[string]any{"next week": map[string]any{"title": "x"}})},
+		"private pointer":          {Method: "CalendarEvent/set", Args: priv(map[string]any{"recurrenceOverrides/2099-01-20T10:00:00": map[string]any{"title": "x"}})},
+		"private participants":     {Method: "CalendarEvent/set", Args: priv(map[string]any{"recurrenceOverrides": map[string]any{"2099-01-20T10:00:00": map[string]any{"participants": map[string]any{}}}})},
+		"rule change":              {Method: "CalendarEvent/set", Reschedule: true, Args: map[string]any{"accountId": "A", "sendSchedulingMessages": true, "update": map[string]any{"w": map[string]any{"recurrenceRules": []any{}}}}},
+	} {
+		if err := check(c); err == nil {
+			t.Errorf("%s: allowed", name)
+		}
+	}
+}
