@@ -22,9 +22,12 @@ type fakeDrive struct {
 	n      int
 }
 
-func perm(id, kind, uid, name, role string) map[string]any {
-	return map[string]any{"id": id, "roles": []any{spaceRoles[role]},
-		"grantedToV2": map[string]any{kind: map[string]any{"id": uid, "displayName": name}}}
+// perm: a member as OpenCloud's v1.0 drive list gives it (live
+// 2026-11-26, and graph/pkg/service/v0/base.go): the legacy role name, no
+// permission id, grantedToV2 plus grantedToIdentities.
+func perm(_, kind, uid, name, role string) map[string]any {
+	ident := map[string]any{kind: map[string]any{"id": uid, "displayName": name}}
+	return map[string]any{"roles": []any{role}, "grantedToV2": ident, "grantedToIdentities": []any{ident}}
 }
 
 func newFakeDrive(t *testing.T) (*fakeDrive, *Files) {
@@ -93,24 +96,35 @@ func newFakeDrive(t *testing.T) (*fakeDrive, *Files) {
 			f.n++
 			root := d["root"].(map[string]any)
 			ps, _ := root["permissions"].([]any)
-			root["permissions"] = append(ps, map[string]any{"id": fmt.Sprintf("pn%d", f.n), "roles": body["roles"],
-				"grantedToV2": map[string]any{kind: map[string]any{"id": rc["objectId"], "displayName": rc["objectId"]}}})
+			root["permissions"] = append(ps, perm("", kind, rc["objectId"].(string), rc["objectId"].(string), roleName(body["roles"].([]any)[0].(string))))
 		case strings.Contains(p, "/root/permissions/"):
 			parts := strings.Split(p, "/")
 			d := drive(parts[4])
 			root := d["root"].(map[string]any)
 			ps := root["permissions"].([]any)
+			found := false
 			for i, x := range ps {
 				pm := x.(map[string]any)
-				if pm["id"] != parts[7] {
+				g := pm["grantedToV2"].(map[string]any)
+				id := ""
+				if u, ok := g["user"].(map[string]any); ok {
+					id = "u:" + u["id"].(string)
+				} else if gr, ok := g["group"].(map[string]any); ok {
+					id = "g:" + gr["id"].(string)
+				}
+				if id != parts[7] {
 					continue
 				}
+				found = true
 				if r.Method == "DELETE" {
 					root["permissions"] = slices.Delete(ps, i, i+1)
 				} else {
-					pm["roles"] = body["roles"]
+					pm["roles"] = []any{roleName(body["roles"].([]any)[0].(string))}
 				}
 				break
+			}
+			if !found {
+				w.WriteHeader(404)
 			}
 		case r.Method == "PATCH" && strings.HasPrefix(p, "/graph/v1.0/drives/"):
 			drive(strings.Split(p, "/")[4])["quota"].(map[string]any)["total"] = body["quota"].(map[string]any)["total"]
@@ -193,7 +207,7 @@ func spaceTools(t *testing.T, a answer) (*fakeDrive, *[]string, func(string, map
 func TestFilesSpaces(t *testing.T) {
 	_, _, call := spaceTools(t, yes)
 	txt, isErr := call("files_spaces", nil)
-	if isErr || !strings.Contains(txt, `"name":"Marketing"`) || !strings.Contains(txt, `"quota_gb":10`) || !strings.Contains(txt, `"used_gb":3`) ||
+	if isErr || !strings.Contains(txt, `"name":"Marketing"`) || strings.Contains(txt, `"role":"other"`) || !strings.Contains(txt, `"quota_gb":10`) || !strings.Contains(txt, `"used_gb":3`) ||
 		!strings.Contains(txt, `{"kind":"user","name":"Anna","role":"editor"}`) || !strings.Contains(txt, `"you_manage":true`) ||
 		!strings.Contains(txt, "you aren't a member of this space") {
 		t.Errorf("spaces: %s", txt)
@@ -226,13 +240,21 @@ func TestFilesSpaceChanges(t *testing.T) {
 	if txt, isErr := call("files_space_member_remove", map[string]any{"space": "Marketing", "member": "anna@co.example"}); isErr {
 		t.Fatalf("remove: %s", txt)
 	}
+	// Changes go to the member's v1beta1 permission id (u:/g: and the id).
+	if w := f.writes(); !slices.Contains(w, "PATCH /graph/v1beta1/drives/d1/root/permissions/u:ua") || !slices.Contains(w, "DELETE /graph/v1beta1/drives/d1/root/permissions/u:ua") {
+		t.Errorf("writes: %v", w)
+	}
+	// The space made here: the admin manages it, so members can be added.
+	if txt, isErr := call("files_space_member_add", map[string]any{"space": "[SGNL MCP test] space", "member": "anna", "role": "editor"}); isErr {
+		t.Fatalf("add to the new space: %s", txt)
+	}
 	if q := (*asked)[3]; !strings.HasPrefix(q, `Remove Anna from "Marketing": they lose access to all its files?`) {
 		t.Errorf("question: %q", q)
 	}
 	if txt, isErr := call("files_space_quota", map[string]any{"space": "Finance", "quota_gb": 8}); isErr {
 		t.Fatalf("quota: %s", txt)
 	}
-	if q := (*asked)[4]; !strings.HasPrefix(q, `Set the size limit of "Finance" to 8 GB (now 5 GB)?`) {
+	if q := (*asked)[5]; !strings.HasPrefix(q, `Set the size limit of "Finance" to 8 GB (now 5 GB)?`) {
 		t.Errorf("question: %q", q)
 	}
 	n, na := len(f.writes()), len(*asked)

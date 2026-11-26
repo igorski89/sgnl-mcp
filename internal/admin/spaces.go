@@ -38,13 +38,29 @@ var spaceRoles = map[string]string{
 	"manager": "312c0871-5ef7-4b3a-85b6-0e4074c64049",
 }
 
-func roleName(id string) string {
+// roleName: a member's role as viewer, editor or manager. The v1.0 drive
+// list gives OpenCloud's legacy role names ("viewer", "editor",
+// "manager"; graph/pkg/service/v0/base.go, GetLegacyRoleName), the
+// v1beta1 permissions the unified role ids: both are read.
+func roleName(r string) string {
+	if _, ok := spaceRoles[r]; ok {
+		return r
+	}
 	for n, v := range spaceRoles {
-		if v == id {
+		if v == r {
 			return n
 		}
 	}
 	return "other"
+}
+
+// permID: a space member's permission id as v1beta1 names it ("u:" or
+// "g:" and the user's or group's id; the v1.0 list leaves it out).
+func permID(kind, id string) string {
+	if kind == "group" {
+		return "g:" + id
+	}
+	return "u:" + id
 }
 
 var (
@@ -277,6 +293,9 @@ func (t *Tools) spaces(ctx context.Context) ([]Space, error) {
 				m.Kind, m.Name, m.id = "group", oneLine(p.GrantedTo.Group.DisplayName), p.GrantedTo.Group.ID
 			default:
 				continue
+			}
+			if m.perm == "" {
+				m.perm = permID(m.Kind, m.id)
 			}
 			s.Members = append(s.Members, m)
 		}
