@@ -312,6 +312,12 @@ func TestMailQuota(t *testing.T) {
 	if got := f.get("u1", "quotas"); got != `{"maxDiskQuota":5368709120,"other":7}` {
 		t.Errorf("quotas (other keys kept): %s", got)
 	}
+	if txt, isErr := call(t, cs, "mail_quota_set", map[string]any{"mailbox": "boss", "limit": "no limit"}); isErr || !strings.Contains(txt, `"quota":"no limit set"`) {
+		t.Errorf("no limit: %q", txt)
+	}
+	if got := f.get("u1", "quotas"); got != `{"other":7}` {
+		t.Errorf("no limit: the key must go, others stay: %s", got)
+	}
 	if txt, isErr := call(t, cs, "mail_quota_set", map[string]any{"mailbox": "contact@co.example", "limit": "no limit"}); !isErr || !strings.Contains(txt, "already no limit") {
 		t.Errorf("same: %q", txt)
 	}
@@ -326,7 +332,7 @@ func TestMailQuota(t *testing.T) {
 			t.Errorf("%s %s: %q, want %q", c.mailbox, c.limit, txt, c.want)
 		}
 	}
-	if f.setCount() != 1 {
+	if f.setCount() != 2 {
 		t.Errorf("sets: %d", f.setCount())
 	}
 }

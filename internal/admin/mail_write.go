@@ -541,7 +541,7 @@ func (t *Tools) quotaSet(ctx context.Context, req *mcp.CallToolRequest, in Quota
 	if b > 0 {
 		qs["maxDiskQuota"] = b
 	} else {
-		qs["maxDiskQuota"] = int64(0)
+		delete(qs, "maxDiskQuota") // no limit: no key (the server keeps 0 as a 0-byte cap)
 	}
 	q := fmt.Sprintf("Set the size limit of %s to %s (now %s)?\n\nIt uses %s. When it's full, new mail to it bounces.", v.Address, want, now, sizeText(used))
 	if b == 0 {
