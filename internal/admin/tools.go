@@ -36,6 +36,9 @@ type Tools struct {
 	// Grafana: the instance's monitoring, called as the admin (nil: no
 	// ops_alerts, ops_host, ops_apps, ops_backups).
 	Grafana *Grafana
+	// Mail: the mail server's management API with the gateway's read-only
+	// key (nil: no mail admin tools).
+	Mail *Stalwart
 	// CertHosts: public hosts whose certificates ops_certs checks.
 	CertHosts []string
 	// GroupApps: what the instance's own groups open, shown when someone
@@ -66,6 +69,17 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Every app container: the deploy version, started when (≈ last deploy), restarts in 24 h, memory against its limit."}, t.appsStatus)
 		add(t, s, &mcp.Tool{Name: "ops_backups", Annotations: ro,
 			Description: "Backups: per job the last successful run and its age, whether the last run is unfinished (failed or still running); the last successful restore drill."}, t.backups)
+	}
+	if t.Mail != nil {
+		const noContent = " Never any mail content."
+		add(t, s, &mcp.Tool{Name: "mail_mailboxes", Annotations: ro,
+			Description: "Every mailbox on the mail server: shared (group) mailboxes with their members, and people, with addresses, aliases and quota used." + noContent}, t.mailboxes)
+		add(t, s, &mcp.Tool{Name: "mail_mailbox", Annotations: ro,
+			Description: "One mailbox (person or shared) by name, address or alias: addresses, aliases, members or the shared mailboxes they're in, quota and used." + noContent}, t.mailbox)
+		add(t, s, &mcp.Tool{Name: "mail_queue", Annotations: ro,
+			Description: "Outbound mail still waiting in the queue: sender, recipients with status (scheduled, failing and why), retries, when it gives up. Optionally only to or from an address." + noContent}, t.queue)
+		add(t, s, &mcp.Tool{Name: "mail_delivery", Annotations: ro,
+			Description: "Was mail to this address delivered? Shows anything to it still queued or failing, and explains what an empty answer means." + noContent}, t.delivery)
 	}
 	if len(t.CertHosts) > 0 {
 		add(t, s, &mcp.Tool{Name: "ops_certs", Annotations: ro,

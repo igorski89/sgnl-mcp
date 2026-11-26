@@ -112,6 +112,17 @@ job's own metrics (`sgnl_backup_last_success_timestamp_seconds{job}`,
 `sgnl_backup_last_run_timestamp_seconds{job}`,
 `sgnl_restore_drill_last_success_timestamp_seconds`).
 
+Mail admin, read-only, with `SGNL_MCP_STALWART_API_KEY` (an API key of a
+dedicated machine account on the mail server whose permissions are only
+`authenticate`, `sysAccountGet/Query`, `sysDomainGet/Query`,
+`sysQueuedMessageGet/Query`): `mail_mailboxes` (shared mailboxes with
+their members, people with addresses, aliases, quota used), `mail_mailbox`,
+`mail_queue` (outbound mail still queued: recipients, status, the
+receiving server's reply, retries) and `mail_delivery` ("was it
+delivered?"). The gateway asks only for listed properties, never a queued
+message's `blobId` (with which its content could be downloaded) or
+credentials, strips `blobId` from any answer, and has no download code.
+
 ## How it works
 
 - **Login:** the gateway is an OAuth 2.1 resource server. It publishes

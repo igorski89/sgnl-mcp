@@ -42,6 +42,9 @@
 //	SGNL_MCP_GRAFANA_AUDIENCE its audience at the issuer; with both, ops_alerts, ops_host,
 //	                        ops_apps, ops_backups on the admin endpoint, as the admin
 //	SGNL_MCP_CERT_HOSTS     public hosts for ops_certs (TLS expiry), comma-separated
+//	SGNL_MCP_STALWART_API_KEY the mail server's API key of the gateway's read-only machine
+//	                        account: mail_mailboxes, mail_mailbox, mail_queue, mail_delivery
+//	                        (management JMAP on the SGNL_MCP_JMAP_URL host; never content)
 //	SGNL_MCP_ADMIN_GROUP_APPS   what the instance's own groups open, shown on group
 //	                        changes: group=text;group=text (SGNL's own groups are built in)
 //	SGNL_MCP_SESSION_IDLE   MCP sessions idle this long are closed (default 1h)
@@ -255,6 +258,14 @@ func main() {
 			what += ", the instance's alerts, server and apps status and backups (read-only)"
 		}
 		at.CertHosts = list("SGNL_MCP_CERT_HOSTS")
+		if key := os.Getenv("SGNL_MCP_STALWART_API_KEY"); key != "" {
+			ju, err := url.Parse(jmapURL)
+			if err != nil || ju.Host == "" {
+				log.Fatalf("sgnl-mcp: SGNL_MCP_JMAP_URL %q: not a URL", jmapURL)
+			}
+			at.Mail = &admin.Stalwart{Base: ju.Scheme + "://" + ju.Host, Key: key, HTTP: &http.Client{Timeout: 20 * time.Second}}
+			what += ", mailboxes, their members and the outbound mail queue (read-only, never mail content)"
+		}
 		if len(at.CertHosts) > 0 {
 			what += ", certificate expiry"
 		}
