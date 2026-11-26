@@ -593,7 +593,7 @@ func (t *Tools) disable(ctx context.Context, req *mcp.CallToolRequest, in UserOn
 	if u.Disabled {
 		return nil, ChangeOut{}, fmt.Errorf("%s is already disabled", in.Username)
 	}
-	q := fmt.Sprintf("Disable %s? They lose access to EVERYTHING now.\n\nEvery session and token of theirs ends and they can't log in until enabled again (admin_enable). Nothing of theirs is deleted.\n\nType their username, %s, to confirm.", in.Username, in.Username)
+	q := fmt.Sprintf("Disable %s? They lose EVERY login now.\n\nEvery session and token of the login server ends and they can't log in until enabled again (admin_enable). App passwords in mail, Forgejo and the file app keep working until the full suspend (ask whoever runs the instance). Nothing of theirs is deleted.\n\nType their username, %s, to confirm.", in.Username, in.Username)
 	res, ok, err := t.Ask.AskTyped(ctx, req, q, u.bind(), "username", in.Username)
 	if err != nil || res != nil {
 		return res, ChangeOut{}, err

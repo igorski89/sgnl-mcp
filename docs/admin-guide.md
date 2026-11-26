@@ -81,7 +81,7 @@ You can't remove *yourself* from the admin group or from `sgnl_users`, so nobody
 
 - *"Log Hugo out everywhere."* ends every session and app token now. They can log in again with their own password and passkey (do this after a lost laptop, for example).
 - *"Disable Hugo."* ends every session and stops all logins until enabled again. Nothing of theirs is deleted.
-  - The confirmation says **they lose access to EVERYTHING now** and asks you to **type their username**. Only the exact username counts.
+  - The confirmation says **they lose EVERY login now** (and that app passwords keep working until the full suspend) and asks you to **type their username**. Only the exact username counts.
 - *"Enable Hugo again."* restores access with their groups as before.
 
 Neither ends what other apps issued themselves: app passwords for mail apps, git tokens in Forgejo and app tokens in the file app keep working. For someone leaving, ask whoever runs the instance for the full suspend; each result reminds you.

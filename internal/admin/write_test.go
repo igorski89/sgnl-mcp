@@ -422,7 +422,7 @@ func TestDisableNeedsTheTypedUsername(t *testing.T) {
 		t.Fatalf("disable: %q", txt)
 	}
 	q := (*asked)[0]
-	if !strings.HasPrefix(q.Message, "Disable hugo? They lose access to EVERYTHING now.") {
+	if !strings.HasPrefix(q.Message, "Disable hugo? They lose EVERY login now.") || !strings.Contains(q.Message, "App passwords in mail, Forgejo and the file app keep working") {
 		t.Errorf("question: %q", q.Message)
 	}
 	if b, _ := json.Marshal(q.RequestedSchema); !strings.Contains(string(b), `"required":["username"]`) || strings.Contains(string(b), "default") {

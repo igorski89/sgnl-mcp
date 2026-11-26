@@ -151,7 +151,7 @@ func (t *Tools) Register(s *mcp.Server) {
 	add(t, s, &mcp.Tool{Name: "admin_logout", Annotations: d,
 		Description: "End all of a person's login sessions and app tokens now (they can log in again). Not yourself." + asks}, t.logout)
 	add(t, s, &mcp.Tool{Name: "admin_disable", Annotations: d,
-		Description: "Disable a person's account: they lose access to everything now, every session and token ends; nothing is deleted. The admin must type the username to confirm. Not yourself." + asks}, t.disable)
+		Description: "Disable a person's account: they lose every login now (every session and token of the login server ends; app passwords in mail, Forgejo and the file app stay until the full suspend); nothing is deleted. The admin must type the username to confirm. Not yourself." + asks}, t.disable)
 	add(t, s, &mcp.Tool{Name: "admin_enable", Annotations: w,
 		Description: "Enable a disabled account again." + asks}, t.enable)
 }
