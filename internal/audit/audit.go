@@ -37,6 +37,8 @@ const (
 	Full
 )
 
+func (l Level) String() string { return [...]string{"off", "meta", "full"}[l] }
+
 // ParseLevel: off, meta or full.
 func ParseLevel(s string, def Level) (Level, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {

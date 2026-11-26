@@ -216,7 +216,7 @@ func main() {
 		}
 		auditStore = audit.Open(ac)
 		http.DefaultTransport = audit.Transport(http.DefaultTransport)
-		slog.Info("audit trail", "path", path, "admin", os.Getenv("SGNL_MCP_AUDIT_ADMIN"), "user", os.Getenv("SGNL_MCP_AUDIT_USER"),
+		slog.Info("audit trail", "path", path, "admin", ac.Admin.String(), "user", ac.User.String(),
 			"user_strict", ac.UserStrict, "retain_admin", ac.RetainAdmin.String(), "retain_user", ac.RetainUser.String())
 		if addr := os.Getenv("SGNL_MCP_METRICS_ADDR"); addr != "" {
 			mm := http.NewServeMux()
