@@ -86,6 +86,15 @@ You can't remove *yourself* from the admin group or from `sgnl_users`, so nobody
 
 Neither ends what other apps issued themselves: app passwords for mail apps, git tokens in Forgejo and app tokens in the file app keep working. For someone leaving, ask whoever runs the instance for the full suspend; each result reminds you.
 
+- *"What does Hugo still have?"* gives a read-only checklist (`admin_offboarding`). It covers:
+  - their login account, groups, sessions and credentials;
+  - their mailbox, whether mail logins are still allowed, and the shared mailboxes they're in;
+  - their file-app account and project spaces, flagging spaces where they're the only manager;
+  - their recent use of the AI connection.
+- Each part says **found**, **checked, nothing** or **NOT CHECKED**, with why and how to check instead. NOT CHECKED means unknown, never empty.
+- Some things the connection can't see, so they're always NOT CHECKED: Forgejo, Vaultwarden, listmonk, mail app passwords, mail filters and forwarding, and file-app tokens and shares.
+- Spaces whose members the file app hides from you (spaces you aren't in) are counted as not checked.
+
 You can't log out or disable yourself here.
 
 ## The server's health

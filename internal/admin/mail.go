@@ -40,10 +40,14 @@ type Stalwart struct {
 	api  string
 }
 
+// accountProps: what the mail tools read of an account; offboarding also
+// reads permissions (whether logins are allowed), never credentials.
+var accountProps = []string{"id", "@type", "name", "domainId", "emailAddress", "description", "memberGroupIds", "aliases", "quotas", "usedDiskQuota"}
+
 // The only reads, each with the only properties it may ask for.
 var mailReads = map[string][]string{
 	"x:Account/query":       nil,
-	"x:Account/get":         {"id", "@type", "name", "domainId", "emailAddress", "description", "memberGroupIds", "aliases", "quotas", "usedDiskQuota"},
+	"x:Account/get":         append(slices.Clone(accountProps), "permissions"),
 	"x:Domain/get":          {"id", "name", "catchAllAddress"},
 	"x:QueuedMessage/query": nil,
 	"x:QueuedMessage/get":   {"id", "createdAt", "nextRetry", "nextNotify", "returnPath", "recipients", "size", "envId", "priority", "flags"},
@@ -206,12 +210,13 @@ func str(m map[string]any, k string) string {
 	return short(s)
 }
 
-// directory: every account and the domain names, for one answer.
-func directory(ctx context.Context, m *Stalwart) ([]map[string]any, map[string]string, error) {
+// directory: every account and the domain names, for one answer; the
+// accounts with these extra properties (from mailReads).
+func directory(ctx context.Context, m *Stalwart, extra ...string) ([]map[string]any, map[string]string, error) {
 	r, err := m.call(ctx,
 		mcall{"x:Account/query", map[string]any{"limit": 2000}},
 		mcall{"x:Account/get", map[string]any{"#ids": map[string]any{"resultOf": "0", "name": "x:Account/query", "path": "/ids"},
-			"properties": mailReads["x:Account/get"]}},
+			"properties": append(slices.Clone(accountProps), extra...)}},
 		mcall{"x:Domain/get", map[string]any{"ids": nil, "properties": []string{"id", "name"}}})
 	if err != nil {
 		return nil, nil, err

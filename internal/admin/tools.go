@@ -78,6 +78,8 @@ func (t *Tools) Register(s *mcp.Server) {
 		Description: "Recent login attempts (successful or not, from which IP), newest first; optionally for one person."}, t.events)
 	add(t, s, &mcp.Tool{Name: "admin_audit", Annotations: ro,
 		Description: "Recent changes to accounts and groups (who changed what), newest first; optionally for one person."}, t.audit)
+	add(t, s, &mcp.Tool{Name: "admin_offboarding", Annotations: ro,
+		Description: "What does a person still have? A read-only checklist for offboarding: login account, groups, sessions and credentials; mailbox, whether mail logins are allowed, shared mailboxes; file-app account and project spaces (flags spaces where they're the only manager); their recent use of SGNL MCP. Each section says found, checked and nothing, or NOT CHECKED (with why and how to check instead); systems the gateway can't see (Forgejo, Vaultwarden, listmonk, app passwords, mail filters) are always NOT CHECKED. Changes nothing."}, t.offboarding)
 	if t.Audit != nil {
 		add(t, s, &mcp.Tool{Name: "mcp_audit_search", Annotations: ro,
 			Description: "Search the gateway's audit trail: every tool call through SGNL MCP (people's and admins'), with the question shown, the answer given and what was done. By person, tool, time, call or target. People's own calls show only who, what and targets, never content."}, t.auditSearch)

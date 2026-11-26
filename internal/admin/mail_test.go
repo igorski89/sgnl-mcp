@@ -51,8 +51,12 @@ func fakeStalwart(t *testing.T) (*Stalwart, *[]string) {
 					map[string]any{"id": "g1", "@type": "Group", "name": "contact", "domainId": "d1", "quotas": map[string]any{"maxDiskQuota": 1 << 30}, "usedDiskQuota": 5 << 20},
 					map[string]any{"id": "u1", "@type": "User", "name": "igor", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true},
 						"aliases": map[string]any{"0": map[string]any{"name": "postmaster", "domainId": "d1", "enable": true}, "1": map[string]any{"name": "old", "domainId": "d1", "enable": false}}},
-					map[string]any{"id": "u2", "@type": "User", "name": "hugo", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true}},
+					map[string]any{"id": "u2", "@type": "User", "name": "hugo", "domainId": "d1", "memberGroupIds": map[string]any{"g1": true}, "usedDiskQuota": 3 << 20},
 				}}
+				// permissions only when asked (offboarding); igor's missing.
+				if strings.Contains(string(b), `"permissions"`) {
+					res.(map[string]any)["list"].([]any)[2].(map[string]any)["permissions"] = map[string]any{"@type": "Inherit"}
+				}
 			case "x:Domain/get":
 				res = map[string]any{"list": []any{map[string]any{"id": "d1", "name": "co.example"}}}
 			case "x:QueuedMessage/query":

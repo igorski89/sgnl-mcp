@@ -745,6 +745,46 @@ func (s *Store) Search(ctx context.Context, f Filter) ([]Event, error) {
 	return out, rows.Err()
 }
 
+// Activity: one person's calls through the gateway (both connectors), for
+// the offboarding checklist.
+type Activity struct {
+	Last       time.Time // zero: no call recorded
+	LastClient string
+	LastTool   string
+	Since      int       // calls since the time asked for
+	Oldest     time.Time // the oldest row in the file (zero: empty)
+}
+
+// Activity: the person's last call and how many calls since since,
+// counted from called rows.
+func (s *Store) Activity(ctx context.Context, username string, since time.Time) (Activity, error) {
+	var a Activity
+	if s == nil || !s.ready() {
+		return a, fmt.Errorf("the audit file isn't open")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var oldest sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT MIN(ts) FROM events`).Scan(&oldest); err != nil {
+		return a, err
+	}
+	if oldest.Valid {
+		a.Oldest = time.UnixMilli(oldest.Int64).UTC()
+	}
+	var ts int64
+	err := s.db.QueryRowContext(ctx, `SELECT ts, COALESCE(client,''), COALESCE(tool,'') FROM events WHERE username = ? AND event = 'called' ORDER BY ts DESC, id DESC LIMIT 1`, username).
+		Scan(&ts, &a.LastClient, &a.LastTool)
+	if err == sql.ErrNoRows {
+		return a, nil
+	}
+	if err != nil {
+		return a, err
+	}
+	a.Last = time.UnixMilli(ts).UTC()
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE username = ? AND event = 'called' AND ts >= ?`, username, since.UnixMilli()).Scan(&a.Since)
+	return a, err
+}
+
 // FailForTest: from now on writes of these events fail (tests only).
 func FailForTest(s *Store, events ...string) {
 	s.mu.Lock()
