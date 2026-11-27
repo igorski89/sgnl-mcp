@@ -20,6 +20,31 @@ func (t *Tools) askNews(ctx context.Context, req *mcp.CallToolRequest, q string,
 	return t.confirm(ctx, req, q, string(b))
 }
 
+// campaignBind, listsBind: what the person approves of a campaign and
+// its lists. Live counters (sent, views, subscribers) are shown but left
+// out, or a campaign that is sending (or a list someone joins) could
+// never be confirmed: they change while the question is open.
+func campaignBind(c listmonk.Campaign) any {
+	return []any{c.ID, c.Status, c.Type, c.Name, c.Subject, c.FromEmail, c.ContentType, c.Body, c.AltBody, c.TemplateID, c.SendAt, c.Lists}
+}
+
+// subBind: who a subscriber is and their subscriptions (not the times).
+func subBind(subs []listmonk.Subscriber) any {
+	var out []any
+	for _, s := range subs {
+		out = append(out, []any{s.ID, s.Email, s.Name, s.Status, s.Attribs, s.Lists})
+	}
+	return out
+}
+
+func listsBind(ls []listmonk.List) any {
+	var out []any
+	for _, l := range ls {
+		out = append(out, []any{l.ID, l.Name, l.Optin, l.Type, l.Status})
+	}
+	return out
+}
+
 func declined(what string) error {
 	return fmt.Errorf("the person declined: %s", what)
 }
@@ -208,7 +233,7 @@ func (t *Tools) newsCampaignSend(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, NewsChangeOut{}, err
 	}
-	n := recipients(ls)
+	n := recipientsFor(c, ls)
 	verb := "SEND"
 	if c.Status == "paused" {
 		verb = fmt.Sprintf("RESUME sending (%d of %d sent so far)", c.Sent, c.ToSend)
@@ -219,7 +244,7 @@ func (t *Tools) newsCampaignSend(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	q := fmt.Sprintf("%s the newsletter campaign %q %s to up to %d people?\n\nSubject: %s\nFrom: %s\nLists: %s\n\nThis mails everyone on these lists, outside the company too. It can be paused or cancelled while it runs, but what is sent can't be taken back.",
 		verb, oneLine(c.Name, 100), when, n, oneLine(c.Subject, 200), oneLine(from, 120), listNames(ls))
-	res, ok, err := t.askNews(ctx, req, q, []any{c, ls, sendAt})
+	res, ok, err := t.askNews(ctx, req, q, []any{campaignBind(c), listsBind(ls), sendAt})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -243,7 +268,7 @@ func (t *Tools) newsCampaignSend(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	note := "Sending started, with the person's confirmation; follow it with newsletter_stats."
 	if out.Status == "scheduled" {
-		note = "Scheduled " + when + ", with the person's confirmation."
+		note = "Scheduled, with the person's confirmation: it goes out at its send time (" + deref(out.SendAt) + ")."
 	}
 	return nil, NewsChangeOut{out.ID, out.Status, note}, nil
 }
@@ -276,7 +301,7 @@ func (t *Tools) newsCampaignStop(ctx context.Context, req *mcp.CallToolRequest, 
 	default:
 		q = fmt.Sprintf("Unschedule the newsletter campaign %q (it was to go out %s)? It goes back to being a draft.", oneLine(c.Name, 100), deref(c.SendAt))
 	}
-	res, ok, err := t.askNews(ctx, req, q, c)
+	res, ok, err := t.askNews(ctx, req, q, campaignBind(c))
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -304,7 +329,7 @@ func (t *Tools) newsCampaignDelete(ctx context.Context, req *mcp.CallToolRequest
 	if c.Status == "scheduled" {
 		q += " It was to go out " + deref(c.SendAt) + "; it won't."
 	}
-	res, ok, err := t.askNews(ctx, req, q, c)
+	res, ok, err := t.askNews(ctx, req, q, campaignBind(c))
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -395,7 +420,7 @@ func (t *Tools) newsTestSend(ctx context.Context, req *mcp.CallToolRequest, in N
 	}
 	who, _ := t.who(ctx, subs)
 	q := fmt.Sprintf("Send a TEST of the newsletter campaign %q to %s?\n\nSubject: %s\nOnly these addresses get it; the campaign itself isn't sent.", oneLine(c.Name, 100), who, oneLine(c.Subject, 200))
-	res, ok, err := t.askNews(ctx, req, q, []any{c, subs})
+	res, ok, err := t.askNews(ctx, req, q, []any{campaignBind(c), subBind(subs)})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -466,7 +491,7 @@ func (t *Tools) newsTxSend(ctx context.Context, req *mcp.CallToolRequest, in New
 		b, _ := json.Marshal(in.Data)
 		q += "\nData: " + oneLine(string(b), 400)
 	}
-	res, ok, err := t.askNews(ctx, req, q, []any{tp, subs, in})
+	res, ok, err := t.askNews(ctx, req, q, []any{tp, subBind(subs), in})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -588,7 +613,7 @@ func (t *Tools) newsListUpdate(ctx context.Context, req *mcp.CallToolRequest, in
 	if in.Type != nil && *in.Type == "public" && l.Type != "public" {
 		q += "\n\nPublic lists are offered to anyone on listmonk's public sign-up page."
 	}
-	res, ok, err := t.askNews(ctx, req, q, []any{l, w})
+	res, ok, err := t.askNews(ctx, req, q, []any{listsBind([]listmonk.List{l}), w})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -608,7 +633,7 @@ func (t *Tools) newsListDelete(ctx context.Context, req *mcp.CallToolRequest, in
 		return nil, NewsChangeOut{}, err
 	}
 	q := fmt.Sprintf("Delete the newsletter list %q with its %d subscription(s)? The subscribers themselves stay; who agreed to this list is lost. It can't be undone.", oneLine(l.Name, 100), l.Count)
-	res, ok, err := t.askNews(ctx, req, q, l)
+	res, ok, err := t.askNews(ctx, req, q, listsBind([]listmonk.List{l}))
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -671,7 +696,7 @@ func (t *Tools) newsSubscriberAdd(ctx context.Context, req *mcp.CallToolRequest,
 	if len(ls) > 0 {
 		q += optinNote(ls, in.Consented)
 	}
-	res, ok, err := t.askNews(ctx, req, q, []any{in, ls})
+	res, ok, err := t.askNews(ctx, req, q, []any{in, listsBind(ls)})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -750,7 +775,7 @@ func (t *Tools) newsSubscriberUpdate(ctx context.Context, req *mcp.CallToolReque
 	if len(pending) > 0 {
 		q += "\n\nlistmonk MAILS THEM again a request to confirm: " + strings.Join(pending, ", ") + "."
 	}
-	res, ok, err := t.askNews(ctx, req, q, []any{s, body})
+	res, ok, err := t.askNews(ctx, req, q, []any{subBind([]listmonk.Subscriber{s}), body})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -805,7 +830,7 @@ func (t *Tools) newsSubscription(ctx context.Context, req *mcp.CallToolRequest, 
 	case "remove":
 		q += "\n\nWhether they had agreed to these lists is lost."
 	}
-	res, ok, err := t.askNews(ctx, req, q, []any{s, ls, body})
+	res, ok, err := t.askNews(ctx, req, q, []any{subBind([]listmonk.Subscriber{s}), listsBind(ls), body})
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -824,7 +849,7 @@ func (t *Tools) newsSubscriberBlocklist(ctx context.Context, req *mcp.CallToolRe
 		return nil, NewsChangeOut{}, err
 	}
 	q := fmt.Sprintf("BLOCKLIST %s <%s>? They are unsubscribed from all %d list(s) and get no newsletter mail at all.", oneLine(s.Name, 80), oneLine(s.Email, 120), len(s.Lists))
-	res, ok, err := t.askNews(ctx, req, q, s)
+	res, ok, err := t.askNews(ctx, req, q, subBind([]listmonk.Subscriber{s}))
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -843,7 +868,7 @@ func (t *Tools) newsSubscriberDelete(ctx context.Context, req *mcp.CallToolReque
 		return nil, NewsChangeOut{}, err
 	}
 	q := fmt.Sprintf("Delete the newsletter subscriber %s <%s> with their %d subscription(s) and history? It can't be undone.", oneLine(s.Name, 80), oneLine(s.Email, 120), len(s.Lists))
-	res, ok, err := t.askNews(ctx, req, q, s)
+	res, ok, err := t.askNews(ctx, req, q, subBind([]listmonk.Subscriber{s}))
 	if err != nil || res != nil {
 		return res, NewsChangeOut{}, err
 	}
@@ -865,9 +890,20 @@ type NewsTemplateIn struct {
 	Body    string `json:"body" jsonschema:"HTML with listmonk's {{ }} template tags"`
 }
 
-func (t *Tools) newsTemplateCreate(ctx context.Context, _ *mcp.CallToolRequest, in NewsTemplateIn) (*mcp.CallToolResult, NewsChangeOut, error) {
+func (t *Tools) newsTemplateCreate(ctx context.Context, req *mcp.CallToolRequest, in NewsTemplateIn) (*mcp.CallToolResult, NewsChangeOut, error) {
 	if err := oneOf("type", in.Type, "campaign", "tx"); err != nil || in.Type == "" {
 		return nil, NewsChangeOut{}, fmt.Errorf("type: campaign or tx")
+	}
+	q := fmt.Sprintf("Create the newsletter template %q (%s, %d characters)?", oneLine(in.Name, 100), in.Type, len([]rune(in.Body)))
+	if in.Type == "tx" {
+		q += " Subject: " + oneLine(in.Subject, 200) + ". Transactional mail sent with it shows only its name and subject in the question."
+	}
+	res, ok, err := t.askNews(ctx, req, q, in)
+	if err != nil || res != nil {
+		return res, NewsChangeOut{}, err
+	}
+	if !ok {
+		return nil, NewsChangeOut{}, declined("no template was created")
 	}
 	body := map[string]any{"name": in.Name, "type": in.Type, "body": in.Body}
 	if in.Type == "tx" {
@@ -877,7 +913,7 @@ func (t *Tools) newsTemplateCreate(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := t.news(ctx, "POST", "/api/templates", nil, body, &x); err != nil {
 		return nil, NewsChangeOut{}, err
 	}
-	return nil, NewsChangeOut{ID: x.ID, Note: "Template created; nothing uses it until a campaign or transactional mail is given it."}, nil
+	return nil, NewsChangeOut{ID: x.ID, Note: "Template created, with the person's confirmation; nothing uses it until a campaign or transactional mail is given it."}, nil
 }
 
 type NewsTemplateUpdateIn struct {

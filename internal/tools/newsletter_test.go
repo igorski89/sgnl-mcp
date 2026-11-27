@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +22,7 @@ type fakeListmonk struct {
 	mu      sync.Mutex
 	changes []string
 	bodies  map[string]map[string]any
+	sent    int // campaign 12 is sending: each read shows more sent
 }
 
 func (f *fakeListmonk) serve(t *testing.T) *httptest.Server {
@@ -48,6 +50,14 @@ func (f *fakeListmonk) serve(t *testing.T) *httptest.Server {
 			f.bodies[k] = m
 			f.mu.Unlock()
 			w.Write([]byte(`{"data":{"id":10,"status":"running"}}`))
+			return
+		}
+		if k == "GET /api/campaigns/12" {
+			f.mu.Lock()
+			f.sent += 7
+			n := f.sent
+			f.mu.Unlock()
+			fmt.Fprintf(w, `{"data":{"id":12,"name":"Now","subject":"S","status":"running","to_send":100,"sent":%d,"views":%d,"updated_at":"t%d","lists":[{"id":2,"name":"Team"}]}}`, n, n/2, n)
 			return
 		}
 		d, ok := data[k]
@@ -119,7 +129,9 @@ func TestNewsletterUntrustedAppGetsReadsAndDrafts(t *testing.T) {
 	if txt, isErr := call(t, cs, "newsletter_campaign_draft_create", map[string]any{"name": "n", "subject": "s", "lists": []int{1}, "body": "b"}); isErr {
 		t.Errorf("draft: %s", txt)
 	}
-	for tool, args := range map[string]map[string]any{
+	// Every newsletter tool that isn't a read or a draft is refused, found
+	// from the registered tools (so a new one can't slip through).
+	args := map[string]map[string]any{
 		"newsletter_campaign_send":        {"id": 10},
 		"newsletter_campaign_stop":        {"id": 11, "action": "unschedule"},
 		"newsletter_campaign_delete":      {"id": 10},
@@ -133,12 +145,31 @@ func TestNewsletterUntrustedAppGetsReadsAndDrafts(t *testing.T) {
 		"newsletter_subscription_change":  {"id": 7, "action": "unsubscribe", "lists": []int{1}},
 		"newsletter_subscriber_blocklist": {"id": 7},
 		"newsletter_subscriber_delete":    {"id": 7},
+		"newsletter_template_create":      {"name": "t", "type": "tx", "subject": "s", "body": "b"},
 		"newsletter_template_update":      {"id": 3, "name": "z"},
 		"newsletter_bounce_delete":        {"id": 4},
-	} {
-		if txt, isErr := call(t, cs, tool, args); !isErr || !strings.Contains(txt, "isn't trusted yet") {
-			t.Errorf("%s: %v %s", tool, isErr, txt)
+	}
+	lt, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked := 0
+	for _, tool := range lt.Tools {
+		if !strings.HasPrefix(tool.Name, "newsletter_") || tool.Annotations.ReadOnlyHint || newsDrafts[tool.Name] {
+			continue
 		}
+		a, ok := args[tool.Name]
+		if !ok {
+			t.Errorf("%s changes something without being a draft: give it a confirmation (and arguments here)", tool.Name)
+			continue
+		}
+		asked++
+		if txt, isErr := call(t, cs, tool.Name, a); !isErr || !strings.Contains(txt, "isn't trusted yet") {
+			t.Errorf("%s: %v %s", tool.Name, isErr, txt)
+		}
+	}
+	if asked != len(args) {
+		t.Errorf("%d of %d confirmed tools checked", asked, len(args))
 	}
 	if got := f.changed(); len(got) != 1 || got[0] != "POST /api/campaigns" {
 		t.Errorf("changes: %v", got)
@@ -263,6 +294,20 @@ func TestNewsletterSubscriberAddConsent(t *testing.T) {
 	}
 	if got := f.changed(); got[len(got)-1] != "PATCH /api/subscribers/7" {
 		t.Errorf("changes: %v", got)
+	}
+}
+
+// A campaign that is sending can be paused: its counters move while the
+// question is open, and the answer still counts.
+func TestNewsletterPauseWhileSending(t *testing.T) {
+	f := &fakeListmonk{}
+	var asked []string
+	cs := newsSession(t, f, answerAs("accept", &asked), nil)
+	if txt, isErr := call(t, cs, "newsletter_campaign_stop", map[string]any{"id": 12, "action": "pause"}); isErr {
+		t.Fatalf("pause: %s", txt)
+	}
+	if f.bodies["PUT /api/campaigns/12/status"]["status"] != "paused" || !strings.Contains(asked[0], "Pause the newsletter campaign \"Now\"") {
+		t.Errorf("%v %v", f.bodies, asked)
 	}
 }
 
