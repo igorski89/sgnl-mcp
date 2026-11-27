@@ -442,10 +442,10 @@ type NewsStatRow struct {
 }
 
 type NewsStatsOut struct {
-	Note    string          `json:"note"`
-	Totals  json.RawMessage `json:"totals,omitempty" jsonschema:"without ids: subscribers, lists, campaigns by status, messages sent (all of listmonk)"`
-	Running json.RawMessage `json:"running,omitempty" jsonschema:"without ids: campaigns sending now (to_send, sent, rate)"`
-	Rows    []NewsStatRow   `json:"rows,omitempty"`
+	Note    string           `json:"note"`
+	Totals  map[string]any   `json:"totals,omitempty" jsonschema:"without ids: subscribers, lists, campaigns by status, messages sent (all of listmonk)"`
+	Running []map[string]any `json:"running,omitempty" jsonschema:"without ids: campaigns sending now (to_send, sent, rate)"`
+	Rows    []NewsStatRow    `json:"rows,omitempty"`
 }
 
 func (t *Tools) newsStats(ctx context.Context, _ *mcp.CallToolRequest, in NewsStatsIn) (*mcp.CallToolResult, NewsStatsOut, error) {
@@ -679,36 +679,49 @@ func (t *Tools) registerNewsletter(s *mcp.Server, ro, wr *mcp.ToolAnnotations) {
 		Description: "Write a new newsletter campaign as a draft: name, subject, lists, text (rich text, HTML, Markdown or plain), template. Nothing is sent: test it with newsletter_test_send, send it with newsletter_campaign_send (the person confirms both)." + n}, t.newsDraftCreate)
 	add(t, s, &mcp.Tool{Name: "newsletter_campaign_draft_update", Annotations: wr,
 		Description: "Change a newsletter campaign that is still a draft (fields given replace the old ones). Scheduled, running or sent campaigns aren't changed here. Nothing is sent." + n}, t.newsDraftUpdate)
-	add(t, s, &mcp.Tool{Name: "newsletter_campaign_send", Annotations: out,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_campaign_send", Annotations: out,
 		Description: "Send a newsletter campaign now, schedule it (send_at), or resume a paused one. The person is asked first, with the lists, up to how many people, the subject and when; nothing is sent without their yes." + n}, t.newsCampaignSend)
-	add(t, s, &mcp.Tool{Name: "newsletter_campaign_stop", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_campaign_stop", Annotations: asked,
 		Description: "Pause or cancel a newsletter campaign that is sending, or unschedule a scheduled one (back to draft). The person is asked first." + n}, t.newsCampaignStop)
-	add(t, s, &mcp.Tool{Name: "newsletter_campaign_delete", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_campaign_delete", Annotations: asked,
 		Description: "Delete a newsletter campaign (not while it sends) with its statistics. The person is asked first; it can't be undone." + n}, t.newsCampaignDelete)
-	add(t, s, &mcp.Tool{Name: "newsletter_test_send", Annotations: out,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_test_send", Annotations: out,
 		Description: "Send a test of a newsletter campaign (as it is saved) to a few addresses, by default your own; each must be an existing subscriber. The person is asked first, with the addresses shown." + n}, t.newsTestSend)
-	add(t, s, &mcp.Tool{Name: "newsletter_tx_send", Annotations: out,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_tx_send", Annotations: out,
 		Description: "Send a transactional mail from a tx template to up to 10 existing subscribers, with data for the template. The person is asked first, with the recipients and subject shown." + n}, t.newsTxSend)
-	add(t, s, &mcp.Tool{Name: "newsletter_list_create", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_list_create", Annotations: asked,
 		Description: "Create a newsletter list (private or public, single or double opt-in). The person is asked first." + n}, t.newsListCreate)
-	add(t, s, &mcp.Tool{Name: "newsletter_list_update", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_list_update", Annotations: asked,
 		Description: "Change a newsletter list: name, public or private, opt-in, active or archived, tags, description. The person is asked first, with the changes shown." + n}, t.newsListUpdate)
-	add(t, s, &mcp.Tool{Name: "newsletter_list_delete", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_list_delete", Annotations: asked,
 		Description: "Delete a newsletter list and its subscriptions (the subscribers stay). The person is asked first; it can't be undone." + n}, t.newsListDelete)
-	add(t, s, &mcp.Tool{Name: "newsletter_subscriber_add", Annotations: out,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_subscriber_add", Annotations: out,
 		Description: "Add a newsletter subscriber (email, name, lists, attributes). The person is asked first, seeing whether listmonk mails them an opt-in request, or, with consented, that their consent is recorded." + n}, t.newsSubscriberAdd)
-	add(t, s, &mcp.Tool{Name: "newsletter_subscriber_update", Annotations: out,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_subscriber_update", Annotations: out,
 		Description: "Change a newsletter subscriber's email, name, enabled or disabled, or attributes (subscriptions: newsletter_subscription_change). The person is asked first, with the changes shown." + n}, t.newsSubscriberUpdate)
-	add(t, s, &mcp.Tool{Name: "newsletter_subscription_change", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_subscription_change", Annotations: asked,
 		Description: "Subscribe a subscriber to lists, unsubscribe them, or take them off lists. The person is asked first; recording consent (consented) is said so in the question." + n}, t.newsSubscription)
-	add(t, s, &mcp.Tool{Name: "newsletter_subscriber_blocklist", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_subscriber_blocklist", Annotations: asked,
 		Description: "Blocklist a newsletter subscriber: unsubscribed from every list, no newsletter mail at all. The person is asked first." + n}, t.newsSubscriberBlocklist)
-	add(t, s, &mcp.Tool{Name: "newsletter_subscriber_delete", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_subscriber_delete", Annotations: asked,
 		Description: "Delete a newsletter subscriber with their subscriptions and history. The person is asked first; it can't be undone." + n}, t.newsSubscriberDelete)
-	add(t, s, &mcp.Tool{Name: "newsletter_template_create", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_template_create", Annotations: asked,
 		Description: "Create a newsletter template (campaign or transactional). The person is asked first. Nothing uses it until a campaign or mail is given it." + n}, t.newsTemplateCreate)
-	add(t, s, &mcp.Tool{Name: "newsletter_template_update", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_template_update", Annotations: asked,
 		Description: "Change a newsletter template's name, subject (tx) or body. The person is asked first, since every campaign and mail using it changes, scheduled ones too." + n}, t.newsTemplateUpdate)
-	add(t, s, &mcp.Tool{Name: "newsletter_bounce_delete", Annotations: asked,
+	addAsked(t, s, &mcp.Tool{Name: "newsletter_bounce_delete", Annotations: asked,
 		Description: "Delete one bounce record. The person is asked first." + n}, t.newsBounceDelete)
+}
+
+// addAsked: a tool that always asks the person: an app that can't ask is
+// told so first, before any check of the input (it would otherwise learn
+// what to fix, then still be refused).
+func addAsked[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
+	add(t, s, tool, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		if err := t.Asker().CanAsk(ctx, req); err != nil {
+			var zero Out
+			return nil, zero, err
+		}
+		return h(ctx, req, in)
+	})
 }

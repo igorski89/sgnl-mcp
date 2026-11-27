@@ -106,6 +106,23 @@ func (a *Asker) AskTyped(ctx context.Context, req *mcp.CallToolRequest, message,
 	return a.ask(ctx, req, message, bind, field, want)
 }
 
+// CanAsk: whether this call's app may be asked at all (a trusted client
+// with elicitation), so a tool can say so before checking its input; the
+// question itself still goes through Ask.
+func (a *Asker) CanAsk(ctx context.Context, req *mcp.CallToolRequest) error {
+	if req == nil || req.Session == nil || req.Params == nil {
+		return ErrNoConfirm
+	}
+	c, _ := auth.Person(ctx)
+	if len(a.Clients) > 0 && !slices.Contains(a.Clients, c.Client()) {
+		return ErrUntrustedClient
+	}
+	if p := req.Session.InitializeParams(); p == nil || p.Capabilities == nil || p.Capabilities.Elicitation == nil {
+		return ErrNoConfirm
+	}
+	return nil
+}
+
 func (a *Asker) ask(ctx context.Context, req *mcp.CallToolRequest, message, bind, field, want string) (res *mcp.CallToolResult, ok bool, err error) {
 	if req == nil || req.Session == nil || req.Params == nil {
 		_ = audit.Answered(ctx, "", "no-elicitation", -1)

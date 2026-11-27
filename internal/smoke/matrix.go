@@ -17,7 +17,7 @@ type Entry struct {
 	Note  string
 }
 
-const news = "newsletter: no steps yet (unit tests only)"
+const news = "newsletter, as B (one listmonk for all)"
 
 func e(note string, m ...Mode) Entry { return Entry{m, note} }
 
@@ -88,35 +88,34 @@ var Matrix = map[string]Entry{
 
 	"logout_everywhere": e("it would end the runner's own login", Declined),
 
-	// The newsletter tools: steps follow once the smoke accounts' listmonk
-	// users are in place (dev first).
-	"newsletter_lists":                 e(news, NotCovered),
-	"newsletter_subscribers":           e(news, NotCovered),
-	"newsletter_subscriber_read":       e(news, NotCovered),
-	"newsletter_campaigns":             e(news, NotCovered),
-	"newsletter_campaign_read":         e(news, NotCovered),
-	"newsletter_stats":                 e(news, NotCovered),
-	"newsletter_templates":             e(news, NotCovered),
-	"newsletter_template_read":         e(news, NotCovered),
-	"newsletter_bounces":               e(news, NotCovered),
-	"newsletter_campaign_draft_create": e(news, NotCovered),
-	"newsletter_campaign_draft_update": e(news, NotCovered),
-	"newsletter_campaign_send":         e(news, NotCovered),
-	"newsletter_campaign_stop":         e(news, NotCovered),
-	"newsletter_campaign_delete":       e(news, NotCovered),
-	"newsletter_test_send":             e(news, NotCovered),
-	"newsletter_tx_send":               e(news, NotCovered),
-	"newsletter_list_create":           e(news, NotCovered),
-	"newsletter_list_update":           e(news, NotCovered),
-	"newsletter_list_delete":           e(news, NotCovered),
-	"newsletter_subscriber_add":        e(news, NotCovered),
-	"newsletter_subscriber_update":     e(news, NotCovered),
-	"newsletter_subscription_change":   e(news, NotCovered),
-	"newsletter_subscriber_blocklist":  e(news, NotCovered),
-	"newsletter_subscriber_delete":     e(news, NotCovered),
-	"newsletter_template_create":       e(news, NotCovered),
-	"newsletter_template_update":       e(news, NotCovered),
-	"newsletter_bounce_delete":         e(news, NotCovered),
+	// The newsletter tools (the smoke accounts are listmonk users in dev).
+	"newsletter_lists":                 e(news, Read),
+	"newsletter_subscribers":           e(news, Read),
+	"newsletter_subscriber_read":       e(news, Read),
+	"newsletter_campaigns":             e(news, Read),
+	"newsletter_campaign_read":         e(news, Read),
+	"newsletter_stats":                 e(news, Read),
+	"newsletter_templates":             e(news, Read),
+	"newsletter_template_read":         e("newsletter: covered by its unit tests only", NotCovered),
+	"newsletter_bounces":               e(news, Read),
+	"newsletter_campaign_draft_create": e(news, Accepted),
+	"newsletter_campaign_draft_update": e(news, Accepted),
+	"newsletter_campaign_send":         e("newsletter: scheduled and unscheduled; send now declined", Accepted, Declined),
+	"newsletter_campaign_stop":         e(news, Accepted),
+	"newsletter_campaign_delete":       e(news, Accepted),
+	"newsletter_test_send":             e("newsletter: to B (Mailpit in dev)", Accepted),
+	"newsletter_tx_send":               e("newsletter: to B (Mailpit in dev)", Accepted),
+	"newsletter_list_create":           e(news, Accepted),
+	"newsletter_list_update":           e(news, Accepted),
+	"newsletter_list_delete":           e(news, Accepted),
+	"newsletter_subscriber_add":        e("newsletter: B to the [smoke] list; an outside address declined", Accepted, Declined),
+	"newsletter_subscriber_update":     e(news, Accepted),
+	"newsletter_subscription_change":   e(news, Accepted),
+	"newsletter_subscriber_blocklist":  e(news, Accepted),
+	"newsletter_subscriber_delete":     e(news, Accepted),
+	"newsletter_template_create":       e("newsletter: the permanent [smoke] tx template, once", Accepted),
+	"newsletter_template_update":       e(news, Accepted),
+	"newsletter_bounce_delete":         e("newsletter: no bounces to delete in dev", NotCovered),
 
 	"aud_check":    e("experiment, off in production", NotCovered),
 	"confirm_test": e("experiment, off in production", NotCovered),

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -478,9 +479,151 @@ func Steps() []Step {
 				return Expect{Dialog: Accept, Must: []string{r.run}, Allow: []string{r.contactAddr()}}
 			}},
 
+		// ---- the newsletter (listmonk), as B: everything shared in listmonk
+		// is named [smoke] and the run; one permanent "[smoke] tx template"
+		// (no tool deletes templates).
+		{Name: "newsletter lists", Who: B, Tool: "newsletter_lists"},
+		{Name: "newsletter campaigns", Who: B, Tool: "newsletter_campaigns"},
+		{Name: "newsletter templates", Who: B, Tool: "newsletter_templates", Check: func(r *Runner, o callOut) error {
+			if x := find(glist(o.out, "templates"), "name", nlTemplate); x != nil && gstr(x, "name") == nlTemplate {
+				r.vars["nl_tpl"] = num(x, "id")
+			}
+			return nil
+		}},
+		{Name: "newsletter bounces", Who: B, Tool: "newsletter_bounces"},
+		{Name: "newsletter totals", Who: B, Tool: "newsletter_stats", Check: contains("totals", "subscribers")},
+		{Name: "list", Who: B, Tool: "newsletter_list_create", Write: true, Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args: func(r *Runner) map[string]any { return map[string]any{"name": tag + " list " + r.run} }, Check: setNum("nl_list", "id")},
+		{Name: "rename the list", Who: B, Tool: "newsletter_list_update", Write: true, Needs: []string{"nl_list"}, Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"id": atoi(r.v("nl_list")), "name": tag + " list " + r.run + " 2"}
+			}},
+		{Name: "B subscribes", Who: B, Tool: "newsletter_subscriber_add", Write: true, Needs: []string{"nl_list"},
+			Expect: func(r *Runner) Expect {
+				return Expect{Dialog: Accept, Must: []string{r.run, r.people.B, "No mail is sent"}}
+			},
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"email": r.people.B, "name": tag + " B " + r.run, "lists": []int{atoi(r.v("nl_list"))}}
+			}, Check: setNum("nl_sub", "id")},
+		{Name: "subscribe outside: declined", Who: B, Tool: "newsletter_subscriber_add", Write: true, Needs: []string{"nl_list"}, WantErr: "declined",
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Decline, Must: []string{"OUTSIDE", r.cfg.Outside}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"email": r.cfg.Outside, "name": tag + " outside " + r.run, "lists": []int{atoi(r.v("nl_list"))}}
+			}},
+		{Name: "find the subscriber", Who: B, Tool: "newsletter_subscribers", Needs: []string{"nl_sub"}, Args: func(r *Runner) map[string]any { return map[string]any{"search": r.run} },
+			Check: func(r *Runner, o callOut) error {
+				for _, s := range glist(o.out, "subscribers") {
+					if num(s, "id") == r.v("nl_sub") {
+						return nil
+					}
+				}
+				return errMissing
+			}},
+		{Name: "read the subscriber", Who: B, Tool: "newsletter_subscriber_read", Needs: []string{"nl_sub"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_sub"))} },
+			Check: contains("name", r0)},
+		{Name: "rename the subscriber", Who: B, Tool: "newsletter_subscriber_update", Write: true, Needs: []string{"nl_sub"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"id": atoi(r.v("nl_sub")), "name": tag + " B " + r.run + " 2"}
+			}},
+		{Name: "campaign draft", Who: B, Tool: "newsletter_campaign_draft_create", Write: true, Needs: []string{"nl_list"}, Args: func(r *Runner) map[string]any {
+			return map[string]any{"name": tag + " campaign " + r.run, "subject": tag + " campaign " + r.run, "lists": []int{atoi(r.v("nl_list"))},
+				"from_email": r.people.B, "content_type": "html", "body": "<p>Smoke test " + r.run + ".</p>"}
+		}, Check: setNum("nl_camp", "id")},
+		{Name: "change the draft", Who: B, Tool: "newsletter_campaign_draft_update", Write: true, Needs: []string{"nl_camp"}, Args: func(r *Runner) map[string]any {
+			return map[string]any{"id": atoi(r.v("nl_camp")), "subject": tag + " campaign " + r.run + " 2"}
+		}},
+		{Name: "read the campaign", Who: B, Tool: "newsletter_campaign_read", Needs: []string{"nl_camp"}, Args: func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_camp"))} },
+			Check: func(r *Runner, o callOut) error {
+				if !strings.Contains(gstr(o.out, "subject"), " 2") || !strings.Contains(gstr(o.out, "text"), r.run) {
+					return errors.New("the changed draft isn't what was saved")
+				}
+				return nil
+			}},
+		{Name: "test to B", Who: B, Tool: "newsletter_test_send", Write: true, Needs: []string{"nl_camp", "nl_sub"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run, r.people.B}} },
+			Args:   func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_camp"))} }},
+		{Name: "send now: declined", Who: B, Tool: "newsletter_campaign_send", Write: true, Needs: []string{"nl_camp"}, WantErr: "declined",
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Decline, Must: []string{"NOW", r.run}} },
+			Args:   func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_camp"))} }},
+		{Name: "schedule it", Who: B, Tool: "newsletter_campaign_send", Write: true, Needs: []string{"nl_camp"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run, "up to 1 people"}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"id": atoi(r.v("nl_camp")), "send_at": r.cfg.Now().AddDate(0, 0, 30).UTC().Format(time.RFC3339)}
+			}, Check: contains("status", "scheduled")},
+		{Name: "unschedule it", Who: B, Tool: "newsletter_campaign_stop", Write: true, Needs: []string{"nl_camp"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"id": atoi(r.v("nl_camp")), "action": "unschedule"}
+			}},
+		{Name: "campaign stats", Who: B, Tool: "newsletter_stats", Needs: []string{"nl_camp"}, Args: func(r *Runner) map[string]any { return map[string]any{"campaign_ids": []int{atoi(r.v("nl_camp"))}} }},
+		{Name: "the [smoke] tx template", Who: B, Tool: "newsletter_template_create", Write: true,
+			Skip: func(r *Runner) string {
+				if r.v("nl_tpl") != "" {
+					return "exists from an earlier run (no tool deletes templates)"
+				}
+				return ""
+			},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{nlTemplate}} },
+			Args: func(*Runner) map[string]any {
+				return map[string]any{"name": nlTemplate, "type": "tx", "subject": tag + " tx", "body": "<p>Smoke test {{ .Tx.Data.run }}.</p>"}
+			}, Check: setNum("nl_tpl", "id")},
+		{Name: "change the template", Who: B, Tool: "newsletter_template_update", Write: true, Needs: []string{"nl_tpl"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{nlTemplate, r.run}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"id": atoi(r.v("nl_tpl")), "subject": tag + " tx " + r.run}
+			}},
+		{Name: "transactional mail to B", Who: B, Tool: "newsletter_tx_send", Write: true, Needs: []string{"nl_tpl", "nl_sub"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run, r.people.B}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"template_id": atoi(r.v("nl_tpl")), "to": []string{r.people.B}, "data": map[string]any{"run": r.run}}
+			}},
+		{Name: "unsubscribe", Who: B, Tool: "newsletter_subscription_change", Write: true, Needs: []string{"nl_sub", "nl_list"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{"UNSUBSCRIBE", r.run}} },
+			Args: func(r *Runner) map[string]any {
+				return map[string]any{"id": atoi(r.v("nl_sub")), "action": "unsubscribe", "lists": []int{atoi(r.v("nl_list"))}}
+			}},
+		{Name: "blocklist", Who: B, Tool: "newsletter_subscriber_blocklist", Write: true, Needs: []string{"nl_sub"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{"BLOCKLIST", r.run}} },
+			Args:   func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_sub"))} }},
+		{Name: "delete the subscriber", Who: B, Tool: "newsletter_subscriber_delete", Write: true, Needs: []string{"nl_sub"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args:   func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_sub"))} }},
+		{Name: "delete the campaign", Who: B, Tool: "newsletter_campaign_delete", Write: true, Needs: []string{"nl_camp"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args:   func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_camp"))} }},
+		{Name: "delete the list", Who: B, Tool: "newsletter_list_delete", Write: true, Needs: []string{"nl_list"},
+			Expect: func(r *Runner) Expect { return Expect{Dialog: Accept, Must: []string{r.run}} },
+			Args:   func(r *Runner) map[string]any { return map[string]any{"id": atoi(r.v("nl_list"))} }},
+
 		// ---- last: logging out everywhere, declined
 		{Name: "log out everywhere: declined", Who: A, Tool: "logout_everywhere", Write: true, WantErr: "declined",
 			Expect: func(r *Runner) Expect { return Expect{Dialog: Decline, Must: []string{"EVERYWHERE"}} }},
+	}
+}
+
+// nlTemplate: the permanent transactional template (changed each run).
+const nlTemplate = tag + " tx template"
+
+// r0: the subscriber's name carries the run id (contains checks it).
+const r0 = tag
+
+// num: a numeric field as text (listmonk ids are numbers).
+func num(m any, field string) string {
+	if f, ok := get(m, field).(float64); ok && f > 0 {
+		return strconv.Itoa(int(f))
+	}
+	return ""
+}
+
+func setNum(k, field string) func(*Runner, callOut) error {
+	return func(r *Runner, o callOut) error {
+		s := num(o.out, field)
+		if s == "" {
+			return fmt.Errorf("no %s in the answer", field)
+		}
+		r.vars[k] = s
+		return nil
 	}
 }
 

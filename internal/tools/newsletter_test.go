@@ -38,6 +38,9 @@ func (f *fakeListmonk) serve(t *testing.T) *httptest.Server {
 		"GET /api/campaigns/11":  `{"id":11,"name":"Later","subject":"S","status":"scheduled","send_at":"2099-01-01T09:00:00Z","lists":[{"id":2,"name":"Team"}]}`,
 		"GET /api/templates/3":   `{"id":3,"name":"Receipt","type":"tx","subject":"Your receipt","body":"<p>{{ .Tx.Data.n }}</p>"}`,
 		"GET /api/bounces/4":     `{"id":4,"type":"hard","email":"ann@example.org","created_at":"2026-11-01"}`,
+		// As dev listmonk answers: objects with nulls in them.
+		"GET /api/dashboard/counts":        `{"subscribers":{"total":2,"blocklisted":null,"orphans":0},"lists":{"total":2},"campaigns":{"total":1,"by_status":{"draft":1}},"messages":0}`,
+		"GET /api/campaigns/running/stats": `[]`,
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		k := r.Method + " " + r.URL.Path
@@ -135,7 +138,7 @@ func TestNewsletterUntrustedAppGetsReadsAndDrafts(t *testing.T) {
 		"newsletter_campaign_send":        {"id": 10},
 		"newsletter_campaign_stop":        {"id": 11, "action": "unschedule"},
 		"newsletter_campaign_delete":      {"id": 10},
-		"newsletter_test_send":            {"id": 10},
+		"newsletter_test_send":            {"id": 10, "to": []string{"nobody@example.org"}}, // refused for the app, not the address
 		"newsletter_tx_send":              {"template_id": 3, "to": []string{"ann@example.org"}},
 		"newsletter_list_create":          {"name": "x"},
 		"newsletter_list_update":          {"id": 1, "name": "y"},
@@ -308,6 +311,13 @@ func TestNewsletterPauseWhileSending(t *testing.T) {
 	}
 	if f.bodies["PUT /api/campaigns/12/status"]["status"] != "paused" || !strings.Contains(asked[0], "Pause the newsletter campaign \"Now\"") {
 		t.Errorf("%v %v", f.bodies, asked)
+	}
+}
+
+func TestNewsletterStatsTotals(t *testing.T) {
+	cs := newsSession(t, &fakeListmonk{}, nil, nil)
+	if txt, isErr := call(t, cs, "newsletter_stats", nil); isErr || !strings.Contains(txt, `"blocklisted":null`) {
+		t.Errorf("%s", txt)
 	}
 }
 

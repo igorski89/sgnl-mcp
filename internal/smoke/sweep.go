@@ -142,6 +142,29 @@ func (r *Runner) sweep(ctx context.Context, label string) {
 			}
 		}
 	}
+	// The newsletter (listmonk is one for all; as B): [smoke] campaigns
+	// (stopped first if sending), subscribers, lists. The permanent tx
+	// template stays.
+	for _, c := range glist(read("B", "newsletter_campaigns", map[string]any{"query": "smoke", "per_page": 50}), "campaigns") {
+		if !strings.HasPrefix(gstr(c, "name"), tag) {
+			continue
+		}
+		id := atoi(num(c, "id"))
+		if s := gstr(c, "status"); s == "running" || s == "paused" {
+			sw("B", "newsletter_campaign_stop", map[string]any{"id": id, "action": "cancel"}, "newsletter: cancel "+gstr(c, "name"), Expect{Dialog: Accept})
+		}
+		sw("B", "newsletter_campaign_delete", map[string]any{"id": id}, "newsletter: campaign "+gstr(c, "name"), Expect{Dialog: Accept})
+	}
+	for _, s := range glist(read("B", "newsletter_subscribers", map[string]any{"search": "smoke", "per_page": 50}), "subscribers") {
+		if strings.HasPrefix(gstr(s, "name"), tag) {
+			sw("B", "newsletter_subscriber_delete", map[string]any{"id": atoi(num(s, "id"))}, "newsletter: subscriber "+gstr(s, "name"), Expect{Dialog: Accept})
+		}
+	}
+	for _, l := range glist(read("B", "newsletter_lists", map[string]any{"query": "smoke", "per_page": 50}), "lists") {
+		if strings.HasPrefix(gstr(l, "name"), tag) {
+			sw("B", "newsletter_list_delete", map[string]any{"id": atoi(num(l, "id"))}, "newsletter: list "+gstr(l, "name"), Expect{Dialog: Accept})
+		}
+	}
 }
 
 // leftovers: after the clean-up, nothing named [smoke] remains (but the
@@ -205,6 +228,15 @@ func (r *Runner) leftovers(ctx context.Context) {
 				if strings.Contains(gstr(m, "subject"), tag) && !trash[gstr(m, "folder")] {
 					left = append(left, u+": mail "+gstr(m, "subject")+" in "+gstr(m, "folder"))
 				}
+			}
+		}
+	}
+	for _, k := range []struct{ tool, list, field string }{
+		{"newsletter_campaigns", "campaigns", "query"}, {"newsletter_subscribers", "subscribers", "search"}, {"newsletter_lists", "lists", "query"},
+	} {
+		for _, x := range glist(look("B", k.tool, map[string]any{k.field: "smoke", "per_page": 50}), k.list) {
+			if strings.HasPrefix(gstr(x, "name"), tag) {
+				left = append(left, "newsletter: "+k.list+" "+gstr(x, "name"))
 			}
 		}
 	}
