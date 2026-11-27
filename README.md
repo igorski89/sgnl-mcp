@@ -68,6 +68,23 @@ groups, the server's health).
 | `file_shares` / `file_unshare` | files (OpenCloud) | what's shared with/by the person; stop one share (**asks**) |
 | `file_edit` | files (OpenCloud) | change a text file in the personal space (exact replacements or an append), **only after the person confirms**, and only if the file is still the version shown |
 
+Newsletter tools (listmonk, when `SGNL_MCP_NEWSLETTER_URL` is set; the person acts as their own listmonk user, matched by email, with that user's role):
+
+| Tool | What |
+|---|---|
+| `newsletter_lists` / `newsletter_subscribers` / `newsletter_subscriber_read` | lists with counts and recipients; subscribers by words, list, status (at most 50 a page); one subscriber with shortened attributes |
+| `newsletter_campaigns` / `newsletter_campaign_read` / `newsletter_stats` | campaigns (no bodies); one with its text and up to how many it reaches; totals, views, clicks, bounces, links, subscriptions (counts only) |
+| `newsletter_templates` / `newsletter_template_read` / `newsletter_bounces` | templates and their source; bounced mail |
+| `newsletter_campaign_draft_create` / `_draft_update` / `newsletter_template_create` | drafts and new templates: nothing goes out, no question |
+| `newsletter_campaign_send` | send now, schedule, or resume (**asks**, with lists, up to how many people, subject, when) |
+| `newsletter_test_send` / `newsletter_tx_send` | a test to a few existing subscribers (default: the person); a transactional mail to up to 10 (**asks**, recipients shown) |
+| `newsletter_campaign_stop` / `newsletter_campaign_delete` | pause, cancel, unschedule; delete (**asks**) |
+| `newsletter_list_create` / `_update` / `_delete` | lists (**asks**) |
+| `newsletter_subscriber_add` / `_update` / `newsletter_subscription_change` / `newsletter_subscriber_blocklist` / `_delete` | subscribers and their subscriptions (**always asks**, saying when listmonk mails an opt-in request and when consent is recorded) |
+| `newsletter_template_update` / `newsletter_bounce_delete` | (**asks**) |
+
+Not offered: listmonk's settings, users, roles, imports, raw SQL queries and bulk changes.
+
 ## Admin endpoint
 
 With `SGNL_MCP_ADMIN_CLIENT_ID` / `SGNL_MCP_ADMIN_CLIENT_SECRET` set, the
@@ -323,6 +340,18 @@ it: `SGNL_MCP_ALLOW_USERS` (usernames or emails) and/or
 only on loopback.
 
 ## Guard rails
+
+- Newsletter: every tool is a read, a draft (a campaign draft or a new
+  template, which nothing uses yet) or asks the person first, so an app
+  that can't ask gets reads and drafts only. Sends, deletes and consent
+  changes (recording that someone agreed, opt-in mail) say so in the
+  question. Only drafts are changed without a question: a scheduled or
+  paused campaign was approved as it is. Test and transactional mail go
+  only to existing, not blocklisted subscribers, checked before anything
+  is sent. Names, attributes and campaign text are marked as written by
+  others, stripped of invisible characters and shortened; pages hold at
+  most 50. The client can call only an allow-list of routes: no raw SQL,
+  bulk or "all" forms, settings, users, roles or imports.
 
 - Mail: the gateway writes drafts; `mail_send` sends a draft only after
   the person says yes in their app, shown every recipient (Bcc included)

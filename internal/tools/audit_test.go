@@ -13,6 +13,7 @@ import (
 	"github.com/igorski89/sgnl-mcp/internal/admin"
 	"github.com/igorski89/sgnl-mcp/internal/audit"
 	"github.com/igorski89/sgnl-mcp/internal/jmap"
+	"github.com/igorski89/sgnl-mcp/internal/listmonk"
 	"github.com/igorski89/sgnl-mcp/internal/opencloud"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -65,7 +66,7 @@ func TestEveryUserToolIsAudited(t *testing.T) {
 	ac := &admin.Client{Base: down.URL, TokenURL: down.URL + "/token", ID: "c", Secret: "s", HTTP: down.Client()}
 	mk := func() *mcp.ClientSession {
 		s := mcp.NewServer(&mcp.Implementation{Name: "u"}, nil)
-		(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(down.URL + "/session"), Files: opencloud.New(down.URL), Access: Access{All: true},
+		(&Tools{Auth: fakeTokens{}, JMAP: jmap.New(down.URL + "/session"), Files: opencloud.New(down.URL), News: listmonk.New(down.URL), Access: Access{All: true},
 			Audit: st, Self: admin.SelfForTest(ac, ac, nil)}).Register(s)
 		return connect(t, s)
 	}
@@ -93,7 +94,7 @@ func TestEveryUserToolIsAudited(t *testing.T) {
 // deliberately hashed at the meta level.
 func TestAuditFieldsAllConsidered(t *testing.T) {
 	s := mcp.NewServer(&mcp.Implementation{Name: "u"}, nil)
-	(&Tools{Auth: fakeTokens{}, Files: opencloud.New("http://x"), Access: Access{All: true}, Experiments: map[string]bool{"aud_check": true, "confirm_test": true},
+	(&Tools{Auth: fakeTokens{}, Files: opencloud.New("http://x"), News: listmonk.New("http://x"), Access: Access{All: true}, Experiments: map[string]bool{"aud_check": true, "confirm_test": true},
 		Self: admin.SelfForTest(&admin.Client{}, &admin.Client{}, nil)}).Register(s)
 	r, _ := connect(t, s).ListTools(context.Background(), nil)
 	for _, tool := range r.Tools {

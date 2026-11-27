@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/igorski89/sgnl-mcp/internal/admin"
+	"github.com/igorski89/sgnl-mcp/internal/listmonk"
 	"github.com/igorski89/sgnl-mcp/internal/opencloud"
 	"github.com/igorski89/sgnl-mcp/internal/smoke"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,7 +15,7 @@ import (
 // test's matrix, and the matrix names no tool that doesn't exist.
 func TestSmokeMatrixCoversEveryTool(t *testing.T) {
 	s := mcp.NewServer(&mcp.Implementation{Name: "u"}, nil)
-	(&Tools{Auth: fakeTokens{}, Files: opencloud.New("http://x"), Access: Access{All: true},
+	(&Tools{Auth: fakeTokens{}, Files: opencloud.New("http://x"), News: listmonk.New("http://x"), Access: Access{All: true},
 		Experiments: map[string]bool{"audcheck": true, "confirm": true},
 		Self:        admin.SelfForTest(&admin.Client{}, &admin.Client{}, nil)}).Register(s)
 	r, err := connect(t, s).ListTools(context.Background(), nil)

@@ -21,6 +21,10 @@ var AuditClear = map[string]bool{
 	// dates
 	"event_list.from": true, "event_list.to": true, "availability_get.from": true, "availability_get.to": true,
 	"out_of_office_set.from": true, "out_of_office_set.to": true, "mail_search.since": true,
+	// newsletter: what is acted on and how (ids, kinds, statuses, paging)
+	"campaign_id": true, "subscriber_id": true, "list_id": true, "lists": true, "list_ids": true, "campaign_ids": true,
+	"template_id": true, "page": true, "per_page": true, "content_type": true, "send_at": true, "action": true,
+	"status": true, "subscription_status": true, "optin": true, "consented": true, "interval": true, "type": true,
 	// results of changes
 	"sent": true, "recipients": true, "outside_company": true, "changed": true, "note": true, "done": true, "size": true,
 }
@@ -32,5 +36,6 @@ var AuditHashed = map[string]bool{
 	"changes": true, "query": true, "description": true, "location": true, "title": true, "attendees": true,
 	"people": true, "emails": true, "phones": true, "company": true, "note": true, "name": true, "members": true,
 	"add": true, "remove": true, "text": true, "to": true, "cc": true, "bcc": true, "from": true, "new_name": true,
+	"tags": true, "tag": true, "from_email": true, "altbody": true, "attributes": true, "email": true, "search": true, "data": true,
 	"label": true, "add_labels": true, "remove_labels": true, "remove_attachments": true, "from_date": true,
 }

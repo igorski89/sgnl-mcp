@@ -165,10 +165,17 @@ func TestPerAppAudience(t *testing.T) {
 	if err != nil || !slices.Equal(PeekClaims(f).Aud, Audience{"opencloud"}) {
 		t.Fatalf("files: %v %v", err, PeekClaims(f).Aud)
 	}
+	if _, err := g.NewsletterToken(as(tok)); err == nil || !strings.Contains(err.Error(), "isn't connected") {
+		t.Fatalf("newsletter without its audience: %v", err)
+	}
+	g.cfg.NewsletterAudience = "listmonk"
+	if nl, err := g.NewsletterToken(as(tok)); err != nil || !slices.Equal(PeekClaims(nl).Aud, Audience{"listmonk"}) {
+		t.Fatalf("newsletter: %v %v", err, PeekClaims(nl).Aud)
+	}
 	g.MailToken(as(tok))
 	asked.Lock()
 	defer asked.Unlock()
-	if n.Load() != 3 || !slices.Equal(asked.aud, []string{"", "stalwart", "opencloud"}) {
+	if n.Load() != 4 || !slices.Equal(asked.aud, []string{"", "stalwart", "opencloud", "listmonk"}) {
 		t.Fatalf("%d exchanges, audiences %q", n.Load(), asked.aud)
 	}
 }

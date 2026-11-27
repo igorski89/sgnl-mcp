@@ -17,6 +17,8 @@ type Entry struct {
 	Note  string
 }
 
+const news = "newsletter: no steps yet (unit tests only)"
+
 func e(note string, m ...Mode) Entry { return Entry{m, note} }
 
 // Matrix: every user tool and how the smoke test covers it. A unit test
@@ -85,6 +87,36 @@ var Matrix = map[string]Entry{
 	"out_of_office_set": e("on for a window a month ahead (nobody gets a reply), then off", Accepted),
 
 	"logout_everywhere": e("it would end the runner's own login", Declined),
+
+	// The newsletter tools: steps follow once the smoke accounts' listmonk
+	// users are in place (dev first).
+	"newsletter_lists":                 e(news, NotCovered),
+	"newsletter_subscribers":           e(news, NotCovered),
+	"newsletter_subscriber_read":       e(news, NotCovered),
+	"newsletter_campaigns":             e(news, NotCovered),
+	"newsletter_campaign_read":         e(news, NotCovered),
+	"newsletter_stats":                 e(news, NotCovered),
+	"newsletter_templates":             e(news, NotCovered),
+	"newsletter_template_read":         e(news, NotCovered),
+	"newsletter_bounces":               e(news, NotCovered),
+	"newsletter_campaign_draft_create": e(news, NotCovered),
+	"newsletter_campaign_draft_update": e(news, NotCovered),
+	"newsletter_campaign_send":         e(news, NotCovered),
+	"newsletter_campaign_stop":         e(news, NotCovered),
+	"newsletter_campaign_delete":       e(news, NotCovered),
+	"newsletter_test_send":             e(news, NotCovered),
+	"newsletter_tx_send":               e(news, NotCovered),
+	"newsletter_list_create":           e(news, NotCovered),
+	"newsletter_list_update":           e(news, NotCovered),
+	"newsletter_list_delete":           e(news, NotCovered),
+	"newsletter_subscriber_add":        e(news, NotCovered),
+	"newsletter_subscriber_update":     e(news, NotCovered),
+	"newsletter_subscription_change":   e(news, NotCovered),
+	"newsletter_subscriber_blocklist":  e(news, NotCovered),
+	"newsletter_subscriber_delete":     e(news, NotCovered),
+	"newsletter_template_create":       e(news, NotCovered),
+	"newsletter_template_update":       e(news, NotCovered),
+	"newsletter_bounce_delete":         e(news, NotCovered),
 
 	"aud_check":    e("experiment, off in production", NotCovered),
 	"confirm_test": e("experiment, off in production", NotCovered),

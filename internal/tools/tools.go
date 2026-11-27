@@ -11,6 +11,7 @@ import (
 
 	"github.com/igorski89/sgnl-mcp/internal/auth"
 	"github.com/igorski89/sgnl-mcp/internal/jmap"
+	"github.com/igorski89/sgnl-mcp/internal/listmonk"
 	"github.com/igorski89/sgnl-mcp/internal/opencloud"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -20,12 +21,14 @@ import (
 type Tokens interface {
 	MailToken(ctx context.Context) (string, error)
 	FilesToken(ctx context.Context) (string, error)
+	NewsletterToken(ctx context.Context) (string, error)
 }
 
 type Tools struct {
 	Auth  Tokens
 	JMAP  *jmap.Client
 	Files *opencloud.Client // nil: no file tools
+	News  *listmonk.Client  // the newsletter app; nil: no newsletter tools
 	TZ    string            // the instance's time zone (IANA), for "today" and new events
 	// Experiments: off unless named in SGNL_MCP_EXPERIMENTS ("confirm":
 	// confirm_test, which asks the person a question and changes nothing).
@@ -196,6 +199,9 @@ func (t *Tools) Register(s *mcp.Server) {
 			Description: "Change an existing Excel (.xlsx) or Word (.docx) file: Excel: add rows after the last used one, set cells (A1-style), add a sheet (values typed; text starting with = stays text; formula cells are never overwritten); Word: append at the end, or replace an exact text that occurs once within one formatting run. Everything else stays byte-identical; anything the editor doesn't fully understand is refused. The person confirms every change; the previous version is kept."}, t.fileOfficeEdit)
 		add(t, s, &mcp.Tool{Name: "file_edit", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true)},
 			Description: "Change a text file (.md, .txt, .csv, .json, .yaml) in your personal space: exact replacements (old_text must occur exactly once) or one append, applied to the file as it is now. The person is asked in their app first, with the changes shown; nothing is written without their yes, and not if the file changed meanwhile. To make a new file use file_save."}, t.fileEdit)
+	}
+	if t.News != nil {
+		t.registerNewsletter(s, ro, wr)
 	}
 	if t.Experiments["audcheck"] {
 		add(t, s, &mcp.Tool{Name: "aud_check", Annotations: ro,

@@ -16,6 +16,9 @@
 //	SGNL_MCP_MAIL_AUDIENCE  the mail server's client id at the issuer: app tokens for JMAP
 //	                        are asked for with this audience (unset: the issuer's default)
 //	SGNL_MCP_FILES_AUDIENCE the same for OpenCloud
+//	SGNL_MCP_NEWSLETTER_URL the newsletter app (listmonk, the fork that takes login-server
+//	                        tokens), e.g. http://listmonk:9000: the newsletter_* tools
+//	SGNL_MCP_NEWSLETTER_AUDIENCE its audience at the issuer (required with the URL)
 //	SGNL_MCP_TZ             the instance's time zone (IANA, default UTC): "today", new events
 //	SGNL_MCP_EXPERIMENTS    comma-separated experiments to switch on (confirm, audcheck)
 //	SGNL_MCP_ALLOW_USERS    who may use it: usernames or email addresses, comma-separated
@@ -95,6 +98,7 @@ import (
 	"github.com/igorski89/sgnl-mcp/internal/admin"
 	"github.com/igorski89/sgnl-mcp/internal/auth"
 	"github.com/igorski89/sgnl-mcp/internal/jmap"
+	"github.com/igorski89/sgnl-mcp/internal/listmonk"
 	"github.com/igorski89/sgnl-mcp/internal/opencloud"
 	"github.com/igorski89/sgnl-mcp/internal/tools"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -186,7 +190,7 @@ func main() {
 	cfg := auth.Config{Issuer: env("SGNL_MCP_ISSUER", ""), Audiences: []string{clientID, public}, ClientID: clientID,
 		ClientSecret: env("SGNL_MCP_CLIENT_SECRET", ""),
 		MailAudience: os.Getenv("SGNL_MCP_MAIL_AUDIENCE"), FilesAudience: os.Getenv("SGNL_MCP_FILES_AUDIENCE"),
-		GrafanaAudience: os.Getenv("SGNL_MCP_GRAFANA_AUDIENCE")}
+		GrafanaAudience: os.Getenv("SGNL_MCP_GRAFANA_AUDIENCE"), NewsletterAudience: os.Getenv("SGNL_MCP_NEWSLETTER_AUDIENCE")}
 	jmapURL := env("SGNL_MCP_JMAP_URL", "")
 
 	pu, err := url.Parse(public)
@@ -270,6 +274,12 @@ func main() {
 	}
 	if u := os.Getenv("SGNL_MCP_OPENCLOUD_URL"); u != "" {
 		t.Files = opencloud.New(u)
+	}
+	if u := os.Getenv("SGNL_MCP_NEWSLETTER_URL"); u != "" {
+		if os.Getenv("SGNL_MCP_NEWSLETTER_AUDIENCE") == "" {
+			log.Fatal("sgnl-mcp: SGNL_MCP_NEWSLETTER_URL is set but SGNL_MCP_NEWSLETTER_AUDIENCE is not")
+		}
+		t.News = listmonk.New(u)
 	}
 	// The person's own login account (my_sessions, logout_everywhere):
 	// the admin clients, only ever for the caller's own username.

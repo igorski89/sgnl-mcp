@@ -107,6 +107,9 @@ type Config struct {
 	// Grafana: required (empty: no Grafana token), since Grafana accepts
 	// only tokens naming it.
 	GrafanaAudience string
+	// Newsletter (listmonk): required like Grafana's; listmonk acts as the
+	// user with the token's email.
+	NewsletterAudience string
 }
 
 type Gateway struct {
@@ -345,6 +348,25 @@ func (g *Gateway) GrafanaToken(ctx context.Context) (string, error) {
 	return tok, nil
 }
 
+// NewsletterToken: a token for the newsletter app (listmonk), only if its
+// identity claims are the person's: listmonk acts as the user with the
+// token's email.
+func (g *Gateway) NewsletterToken(ctx context.Context) (string, error) {
+	if g.cfg.NewsletterAudience == "" {
+		return "", errors.New("the newsletter app isn't connected here")
+	}
+	tok, c, err := g.appToken(ctx, g.cfg.NewsletterAudience)
+	if err != nil {
+		return "", err
+	}
+	p, _ := from(ctx)
+	if d := identityDiff(p.claims, c); d != "" {
+		slog.Warn("app token refused: identity differs from the person's", "field", d, "app", "newsletter")
+		return "", fmt.Errorf("the newsletter token's %s differs from your login's; refusing to call it", d)
+	}
+	return tok, nil
+}
+
 // FilesToken: the same for OpenCloud, and only if its identity claims
 // (username, name, email, groups) equal the person's: OpenCloud updates
 // the account (and its role) from the token it gets, so a token that
@@ -401,6 +423,8 @@ func (g *Gateway) policyDenied(desc, aud string) error {
 		app = "files"
 	case g.cfg.GrafanaAudience:
 		app = "monitoring"
+	case g.cfg.NewsletterAudience:
+		app = "the newsletter app"
 	}
 	switch {
 	case strings.Contains(desc, "does not permit this user"):
