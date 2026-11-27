@@ -75,7 +75,8 @@ gateway also serves `<public host>/admin/mcp`, a separate MCP connection with
 read-only admin tools (`admin_users`, `admin_user`, `admin_groups`,
 `admin_events`, `admin_audit`, and `admin_offboarding`, a found / nothing /
 NOT CHECKED checklist of what a person still has across the systems the
-gateway can see) over the login server's admin API. It takes
+gateway can see; its hints name the operator's instance from
+`SGNL_MCP_INSTANCE`) over the login server's admin API. It takes
 only tokens issued for it (its URL in `aud`), and only members of
 `SGNL_MCP_ADMIN_GROUPS` (default `admins`) by the login server's current
 groups. The admin client is read scope only; every call is logged with the

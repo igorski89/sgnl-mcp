@@ -40,6 +40,8 @@
 //	SGNL_MCP_ADMIN_GROUPS   who may use them (default admins), by the login server's current groups
 //	SGNL_MCP_ADMIN_WRITE_CLIENT_ID     set: also admin tools that change people and groups
 //	SGNL_MCP_ADMIN_WRITE_CLIENT_SECRET (scopes authelia.admin.read + .write), each confirmed
+//	SGNL_MCP_INSTANCE       the operator's name for this instance, as their bin/sgnl-* tools take it
+//	                        (--instance): named in admin hints such as the full suspend
 //	SGNL_MCP_ADMIN_USER_DOMAIN  people's company domain (<user>@it): needed for
 //	                        admin_invite and admin_finish_invite
 //	SGNL_MCP_GRAFANA_URL    monitoring (Grafana with JWT auth), e.g. https://monitor.example.com:
@@ -314,7 +316,7 @@ func main() {
 		}
 		adminURL = pu.Scheme + "://" + pu.Host + "/admin/mcp"
 		adminPRMPath := "/.well-known/oauth-protected-resource/admin/mcp"
-		at := &admin.Tools{Audit: auditStore, Admins: list("SGNL_MCP_ADMIN_GROUPS"), API: &admin.Client{Base: cfg.Issuer + "/api/admin",
+		at := &admin.Tools{Audit: auditStore, Instance: os.Getenv("SGNL_MCP_INSTANCE"), Admins: list("SGNL_MCP_ADMIN_GROUPS"), API: &admin.Client{Base: cfg.Issuer + "/api/admin",
 			TokenURL: gw.TokenURL(), ID: id, Secret: os.Getenv("SGNL_MCP_ADMIN_CLIENT_SECRET"),
 			Scope: "authelia.admin.read", HTTP: &http.Client{Timeout: 20 * time.Second}, Now: time.Now}}
 		what := "views of accounts, groups, login attempts and account changes"

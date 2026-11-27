@@ -80,8 +80,14 @@ func notChecked(section, why, how string) Check {
 	return Check{Section: section, State: stNot, Reason: why, How: how}
 }
 
-func suspendHint(user string) string {
-	return "run bin/sgnl-user-suspend --status " + user
+// suspendHint: the operator's command that shows (and does) the full
+// suspend; the operator's tools need the instance named.
+func (t *Tools) suspendHint(user string) string {
+	inst := t.Instance
+	if inst == "" {
+		inst = "<instance>"
+	}
+	return "run bin/sgnl-user-suspend --instance " + inst + " --status " + user
 }
 
 // sectionTimeout: each backend gets its own deadline, so one slow system
@@ -91,9 +97,9 @@ const sectionTimeout = 12 * time.Second
 func (t *Tools) offboarding(ctx context.Context, _ *mcp.CallToolRequest, in OffboardingIn) (*mcp.CallToolResult, OffboardingOut, error) {
 	user := strings.ToLower(strings.TrimSpace(in.Username))
 	if !reUsername.MatchString(user) {
-		return nil, OffboardingOut{}, fmt.Errorf("username: a login name (lowercase letters, digits, . _ -)")
+		return nil, OffboardingOut{}, fmt.Errorf("username: a login name: a lowercase letter first, then 1 to 63 lowercase letters, digits, '.', '_' or '-'")
 	}
-	hint := suspendHint(user)
+	hint := t.suspendHint(user)
 
 	// The login server first: its groups are needed for space access
 	// through groups.
@@ -226,7 +232,8 @@ func (t *Tools) offMail(ctx context.Context, user, hint string) []Check {
 		secApp    = "Mail: app passwords"
 		secSieve  = "Mail: forwarding and filters"
 	)
-	app := notChecked(secApp, "the gateway's mail key can't see another person's app passwords (the mail server shows them only to the account itself)", hint)
+	app := notChecked(secApp, "the gateway's mail key can't see another person's app passwords (the mail server shows them only to the account itself)",
+		"the operator lists them with stalwart-cli query AppPassword; they're blocked once mail logins are suspended (see Mail: mailbox and logins)")
 	sieve := notChecked(secSieve, "forwarding and filters live in the person's own account, which the gateway's mail key can't read", "check their filters in the mail server's admin")
 	if t.Mail == nil {
 		why := "the gateway has no mail-server access configured"

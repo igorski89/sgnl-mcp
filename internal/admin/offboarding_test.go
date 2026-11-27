@@ -75,8 +75,16 @@ func TestOffboardingFound(t *testing.T) {
 			t.Errorf("%s: %+v", s, c)
 		}
 	}
-	if c := section(t, out, "Forgejo"); !strings.HasSuffix(c.Line, "run bin/sgnl-user-suspend --status hugo") {
+	if c := section(t, out, "Forgejo"); !strings.HasSuffix(c.Line, "run bin/sgnl-user-suspend --instance <instance> --status hugo") {
 		t.Errorf("forgejo hint: %s", c.Line)
+	}
+	if c := section(t, out, "Mail: app passwords"); !strings.Contains(c.Line, "stalwart-cli query AppPassword") || strings.Contains(c.Line, "--status") {
+		t.Errorf("app passwords hint: %s", c.Line)
+	}
+	// With the instance configured, the hint names it.
+	at.Instance = "acme"
+	if out, _ := offboard(t, at, "hugo"); !strings.HasSuffix(section(t, out, "Forgejo").Line, "run bin/sgnl-user-suspend --instance acme --status hugo") {
+		t.Errorf("forgejo hint with the instance: %s", section(t, out, "Forgejo").Line)
 	}
 	if c := section(t, out, "Vaultwarden"); !strings.Contains(c.Line, "admin page") {
 		t.Errorf("vaultwarden hint: %s", c.Line)
@@ -168,8 +176,8 @@ func TestOffboardingNoSuchPerson(t *testing.T) {
 		t.Errorf("login: %+v", c)
 	}
 	cs, _ := wsession(t, at, nil)
-	if txt, isErr := call(t, cs, "admin_offboarding", map[string]any{"username": "../x"}); !isErr {
-		t.Errorf("bad username accepted: %s", txt)
+	if txt, isErr := call(t, cs, "admin_offboarding", map[string]any{"username": "../x"}); !isErr || !strings.Contains(txt, "a lowercase letter first") {
+		t.Errorf("bad username: %s", txt)
 	}
 }
 

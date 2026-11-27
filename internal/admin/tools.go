@@ -28,6 +28,9 @@ type Tools struct {
 	// Ask: who may be asked to confirm a change (the same trusted clients
 	// as the person's own confirmed actions).
 	Ask *confirm.Asker
+	// Instance: the operator's name for this instance (bin/sgnl-* --instance),
+	// shown in hints that point at the operator's tools. "": a placeholder.
+	Instance string
 	// UserDomain: the company domain of people's addresses
 	// (<username>@UserDomain). "": no admin_invite or admin_finish_invite.
 	UserDomain string
