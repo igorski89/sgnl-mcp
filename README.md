@@ -407,8 +407,11 @@ only on loopback.
   elicitation can't do confirmed actions.
 - Mail and file text reaches the model as a person would see it: hidden
   HTML text and invisible characters are dropped.
-- Per person: rate limits per kind of call; every call is logged with its
-  outcome, never content.
+- Per person: rate limits per kind of call (read, write, outward); a
+  change the person confirms costs two, both paid when the question is
+  asked, so their yes is never refused for the budget (answers are only
+  capped against replays). Every call is logged with its outcome, never
+  content.
 
 ## License
 

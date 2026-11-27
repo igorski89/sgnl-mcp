@@ -340,3 +340,28 @@ func TestAttribsCapped(t *testing.T) {
 		t.Errorf("%d: %s", len(got), got[:200])
 	}
 }
+
+// A confirmed action costs two of the outward budget, both paid when the
+// question is asked; a call that doesn't ask costs one. With one left, a
+// send is refused before asking, never after the person's yes.
+func TestConfirmedActionsPayWhenAsking(t *testing.T) {
+	f := &fakeListmonk{}
+	var asked []string
+	cs := newsSession(t, f, answerAs("accept", &asked), nil)
+	// Refused without asking (already scheduled): one of 20.
+	if _, isErr := call(t, cs, "newsletter_campaign_send", map[string]any{"id": 11}); !isErr {
+		t.Fatal("a scheduled campaign was sent")
+	}
+	for i := range 9 {
+		if txt, isErr := call(t, cs, "newsletter_campaign_send", map[string]any{"id": 10}); isErr {
+			t.Fatalf("send %d: %s", i+1, txt)
+		}
+	}
+	txt, isErr := call(t, cs, "newsletter_campaign_send", map[string]any{"id": 10})
+	if !isErr || !strings.Contains(txt, "too many outward") || len(asked) != 9 {
+		t.Errorf("with one left: %s, %d questions", txt, len(asked))
+	}
+	if n := len(f.changed()); n != 9 {
+		t.Errorf("%d sends", n)
+	}
+}

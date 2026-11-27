@@ -260,10 +260,24 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 				return nil, zero, fmt.Errorf("SGNL MCP isn't switched on for you: ask an admin")
 			}
 		}
-		if err := t.limits.allow(c.Username, kind); err != nil {
+		// A change that asks the person costs two, both paid when the
+		// question is asked (a call starts only if two are left), so a
+		// person's yes is never refused for the budget: the answering call
+		// draws only on the answer cap.
+		answering := req != nil && req.Params != nil && req.Params.InputResponses != nil
+		var lerr error
+		switch {
+		case answering:
+			lerr = t.limits.allow(c.Username, kindAnswer)
+		case kind == kindRead:
+			lerr = t.limits.allow(c.Username, kind)
+		default:
+			lerr = t.limits.takeFor(c.Username, kind)
+		}
+		if lerr != nil {
 			l.Warn("tool refused", "outcome", "rate limited")
 			t.Audit.Refused(ctx, audit.User, tool.Name, who, "rate limited")
-			return nil, zero, err
+			return nil, zero, lerr
 		}
 		ctx, rec, aerr := t.Audit.Begin(ctx, audit.User, tool.Name, kind == kindRead, who, in)
 		if aerr != nil {
@@ -282,6 +296,9 @@ func add[In, Out any](t *Tools, s *mcp.Server, tool *mcp.Tool, h mcp.ToolHandler
 			}
 		}()
 		res, out, err = h(ctx, req, in)
+		if !answering && kind != kindRead && res != nil && res.InputRequests != nil {
+			t.limits.charge(c.Username, kind)
+		}
 		rec.Done(ctx, outcomeOf(res, err), errText(err), out)
 		l = l.With("ms", time.Since(start).Milliseconds())
 		switch {

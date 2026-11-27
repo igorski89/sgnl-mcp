@@ -49,19 +49,22 @@ var limitsPerMinute = map[string]struct {
 }{
 	kindRead:  {120, 60},
 	kindWrite: {30, 15},
-	// Outward calls come in pairs (the question, then the answer): about
-	// 10 sends at once, then one every 2 minutes (30 an hour).
+	// A confirmed action costs two (taken when the question is asked):
+	// about 10 sends at once, then one every 2 minutes (30 an hour).
 	kindOutward: {1, 20},
+	// The person's answers: never refused for the action's budget (that
+	// was paid when asking), only capped against replays.
+	kindAnswer: {30, 30},
 }
+
+const kindAnswer = "answer"
 
 type limiter struct {
 	mu sync.Mutex
 	m  map[string]*rate.Limiter
 }
 
-func (l *limiter) allow(who, kind string) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+func (l *limiter) get(who, kind string) *rate.Limiter {
 	if l.m == nil {
 		l.m = map[string]*rate.Limiter{}
 	}
@@ -72,8 +75,38 @@ func (l *limiter) allow(who, kind string) error {
 		r = rate.NewLimiter(rate.Limit(c.perMin/60), c.burst)
 		l.m[k] = r
 	}
-	if !r.Allow() {
-		return fmt.Errorf("too many %s actions in a short time: wait a minute and try again", kind)
+	return r
+}
+
+func limited(kind string) error {
+	return fmt.Errorf("too many %s actions in a short time: wait a minute and try again", kind)
+}
+
+func (l *limiter) allow(who, kind string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.get(who, kind).Allow() {
+		return limited(kind)
 	}
 	return nil
+}
+
+// takeFor: one of the kind's budget now, and only if a second is left
+// too (the question's cost, charged with charge once it is asked).
+func (l *limiter) takeFor(who, kind string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r := l.get(who, kind)
+	if r.Tokens() < 2 || !r.Allow() {
+		return limited(kind)
+	}
+	return nil
+}
+
+// charge: one more of the kind's budget, even into debt (a question was
+// asked; the next call waits longer).
+func (l *limiter) charge(who, kind string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.get(who, kind).Reserve()
 }
