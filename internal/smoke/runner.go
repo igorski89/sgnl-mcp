@@ -23,7 +23,11 @@ type Config struct {
 	Outside  string // an outside address (reserved domain): only ever declined
 	Only     []string
 	ReadOnly bool // only the read-only steps (no sweep, no changes)
-	HTTP     *http.Client
+	// Newsletter: also the newsletter steps (they create and delete
+	// [smoke] items in listmonk and send a test and a transactional mail
+	// to the second account): off unless asked for, e.g. in dev.
+	Newsletter bool
+	HTTP       *http.Client
 	// AnswerAfter: how long to "read" a question before answering (the
 	// gateway refuses answers faster than a person; default 2 s).
 	AnswerAfter time.Duration

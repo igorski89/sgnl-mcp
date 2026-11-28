@@ -14,7 +14,8 @@
 //	SGNL_SMOKE_OUTSIDE     an outside address, only ever declined
 //	                       (default smoke-outside@example.com)
 //
-// Flags: -read-only (no changes, no sweep), -only tool,tool.
+// Flags: -read-only (no changes, no sweep), -only tool,tool, -newsletter
+// (also the newsletter steps; off by default, since they mail).
 // Exit: 0 all ok, 1 a step failed, 2 the run couldn't start, 3 a re-login
 // is needed (the saved login has ended).
 package main
@@ -37,6 +38,7 @@ import (
 func main() {
 	readOnly := flag.Bool("read-only", false, "only the read-only steps: no changes, no sweep")
 	only := flag.String("only", "", "only these tools (comma-separated)")
+	newsletter := flag.Bool("newsletter", false, "also the newsletter steps: [smoke] items in listmonk, a test and a transactional mail to the second account (dev; not against production unless agreed)")
 	flag.Parse()
 	need := func(k string) string {
 		v := os.Getenv(k)
@@ -60,7 +62,7 @@ func main() {
 			Login: &smoke.Login{Path: need("SGNL_SMOKE_" + p + "_TOKEN"), TokenURL: tokURL, ClientID: client, HTTP: hc}}
 	}
 	cfg := smoke.Config{URL: need("SGNL_SMOKE_URL"), Accounts: [2]smoke.Account{acct("A"), acct("B")},
-		Shared: need("SGNL_SMOKE_SHARED"), Outside: os.Getenv("SGNL_SMOKE_OUTSIDE"), ReadOnly: *readOnly, Log: os.Stderr}
+		Shared: need("SGNL_SMOKE_SHARED"), Outside: os.Getenv("SGNL_SMOKE_OUTSIDE"), ReadOnly: *readOnly, Newsletter: *newsletter, Log: os.Stderr}
 	if *only != "" {
 		cfg.Only = strings.Split(*only, ",")
 	}

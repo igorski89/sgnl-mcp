@@ -324,6 +324,9 @@ is needed.
   `cmd/sgnl-mcp-smoke/main.go`. Tokens come from two files (JSON with a
   refresh token, mode 600), which are rewritten when the token is refreshed.
   `-read-only` makes no changes; `-only tool,…` limits the run.
+  The newsletter steps run only with `-newsletter`: they create and delete
+  `[smoke]` items in listmonk and send a test and a transactional mail to
+  the second account, so they're meant for a test instance (mail caught).
 - **Timing:** each run uses most of a person's burst of outward actions
   (sending, inviting, sharing). Leave about 20 minutes between full runs;
   otherwise steps show as `rate-limited` rather than failing silently.

@@ -690,6 +690,14 @@ func Run(ctx context.Context, cfg Config) (*Runner, error) {
 		return r, err
 	}
 	r.offer = offered
+	if !cfg.Newsletter {
+		// Not asked for: neither the steps nor the sweep touch listmonk.
+		for k := range r.offer {
+			if strings.HasPrefix(k, "newsletter_") {
+				delete(r.offer, k)
+			}
+		}
+	}
 	if sweep {
 		r.sweep(ctx, "sweep (leftovers)")
 	}
@@ -699,6 +707,10 @@ func Run(ctx context.Context, cfg Config) (*Runner, error) {
 	}
 	for _, s := range steps {
 		if len(cfg.Only) > 0 && !slices.Contains(cfg.Only, s.Tool) {
+			continue
+		}
+		if strings.HasPrefix(s.Tool, "newsletter_") && !cfg.Newsletter {
+			r.add(s.Name, s.Tool, "skipped", 0, "newsletter steps only with -newsletter")
 			continue
 		}
 		if !offered[s.Tool] {
